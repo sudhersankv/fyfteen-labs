@@ -9,963 +9,464 @@
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=Manrope:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
   <style>
-    :root{color-scheme:dark;--bg:#03080a;--panel:#071114;--panel2:#0a171b;--line:#14333a;--text:#e8fbff;--muted:#7ea8b0;--cyan:#22f0c8;--blue:#5eead4;--gold:#8ef6d8;--red:#ff6b8a;--purple:#67e8f9}
+    :root{color-scheme:dark;--bg:#03080a;--panel:#071114;--panel2:#0a171b;--line:#14333a;--text:#e8fbff;--muted:#7ea8b0;--cyan:#22f0c8;--blue:#5eead4;--gold:#8ef6d8;--red:#ff6b8a}
     *{box-sizing:border-box}html,body{background:var(--bg)}body{margin:0;background:radial-gradient(900px 420px at 8% -10%,rgba(34,240,200,.14),transparent 50%),radial-gradient(700px 360px at 92% 0,rgba(34,240,200,.06),transparent 42%),var(--bg);color:var(--text);font:14px/1.45 Manrope,Segoe UI,sans-serif}
     .banner{position:sticky;top:0;z-index:10;background:#041012cc;backdrop-filter:blur(14px);color:#8ab8bf;text-align:center;padding:7px;border-bottom:1px solid var(--line);font-size:11px;letter-spacing:.12em;text-transform:uppercase}.banner b{color:var(--cyan)}
     main{max-width:1580px;margin:auto;padding:18px}.top{display:flex;gap:20px;justify-content:space-between;align-items:center;flex-wrap:wrap}
     .brand{display:flex;flex-direction:column;gap:2px}h1,.logo{font-family:Syne,sans-serif;font-size:30px;margin:0;letter-spacing:-.06em;font-weight:800;line-height:1}.logo i{color:var(--cyan);font-style:normal}.sub{color:var(--muted);margin-top:6px;max-width:920px}.livebar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-    .badge,.pill{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--line);border-radius:99px;background:#141e2f;color:#b8c5d9;font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:var(--red);box-shadow:0 0 10px currentColor}.dot.ok{background:var(--cyan)}
-    .tabs{display:flex;margin-top:16px;border-bottom:1px solid var(--line)}.tabs button{border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted);padding:11px 18px;cursor:pointer;font-weight:700;letter-spacing:.04em}.tabs button.on{color:var(--cyan);border-color:var(--cyan)}
-    .grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px;margin-top:14px}.card{background:linear-gradient(150deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:13px;padding:15px;min-width:0;box-shadow:0 8px 30px #0002}
-    .metric{grid-column:span 2;position:relative;overflow:hidden}.metric:after{content:"";position:absolute;left:0;bottom:0;width:100%;height:2px;background:var(--accent,var(--blue));opacity:.7}.metric b{display:block;font-size:24px;margin-top:8px;white-space:nowrap}.metric em{display:block;color:var(--muted);font-style:normal;font-size:11px;margin-top:4px}
-    small,h3{color:var(--muted);text-transform:uppercase;letter-spacing:1px}h3{font-size:12px;margin:0 0 12px}.wide{grid-column:span 8}.side{grid-column:span 4}.half{grid-column:span 6}.full{grid-column:1/-1}.chart{height:310px}
+    .badge{display:inline-flex;align-items:center;gap:6px;padding:5px 9px;border:1px solid var(--line);border-radius:99px;background:#141e2f;color:#b8c5d9;font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:var(--red)}.dot.ok{background:var(--cyan)}
+    .tabs{display:flex;margin-top:16px;border-bottom:1px solid var(--line)}.tabs button{border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted);padding:11px 18px;cursor:pointer;font-weight:700}.tabs button.on{color:var(--cyan);border-color:var(--cyan)}
+    .grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px;margin-top:14px}.card{background:linear-gradient(150deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:13px;padding:15px;min-width:0}
+    .metric{grid-column:span 2}.metric b{display:block;font-size:24px;margin-top:8px}.metric em{display:block;color:var(--muted);font-size:11px;margin-top:4px}
+    small,h3{color:var(--muted);text-transform:uppercase;letter-spacing:1px}h3{font-size:12px;margin:0 0 12px}.wide{grid-column:span 8}.side{grid-column:span 4}.half{grid-column:span 6}.full{grid-column:1/-1}.chart{height:280px}
+    .h3row{display:flex;align-items:center;gap:8px;margin:0 0 12px}.h3row h3{margin:0}
     .progress{height:5px;background:#172235;border-radius:5px;margin-top:12px;overflow:hidden}.progress i{display:block;height:100%;background:linear-gradient(90deg,var(--cyan),var(--blue));width:0}
-    table{width:100%;border-collapse:collapse;font-size:12px}th,td{text-align:left;padding:8px;border-bottom:1px solid #1d2940;white-space:nowrap}th{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.6px;position:sticky;top:0;background:var(--panel)}tbody tr:hover{background:#172238}
-    .scroll{overflow:auto;max-height:430px}.yes,.positive{color:var(--cyan)}.no,.negative,.bad{color:var(--red)}.gold{color:var(--gold)}.ok{color:var(--cyan)}.muted{color:var(--muted)}.mono{font-family:IBM Plex Mono,Consolas,monospace}.right{text-align:right}
-    .ladder{display:grid;grid-template-columns:1fr 1fr;gap:10px}.ladder h4{font-size:11px;color:var(--muted);margin:0 0 6px}.level{display:flex;justify-content:space-between;padding:4px 7px;margin:2px 0;background:#172238;border-radius:4px}.ask{border-left:2px solid var(--red)}.bid{border-left:2px solid var(--cyan)}
+    table{width:100%;border-collapse:collapse;font-size:12px}th,td{text-align:left;padding:8px;border-bottom:1px solid #1d2940;white-space:nowrap}th{color:var(--muted);font-size:10px;text-transform:uppercase}
+    .scroll{overflow:auto;max-height:380px}.yes,.positive{color:var(--cyan)}.no,.negative,.bad{color:var(--red)}.muted{color:var(--muted)}.mono{font-family:IBM Plex Mono,Consolas,monospace}
+    .ladder{display:grid;grid-template-columns:1fr 1fr;gap:10px}.level{display:flex;justify-content:space-between;padding:4px 7px;margin:2px 0;background:#172238;border-radius:4px}.ask{border-left:2px solid var(--red)}.bid{border-left:2px solid var(--cyan)}
     .statgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.stat{background:#101827;border:1px solid #1c2940;padding:9px;border-radius:8px}.stat span{display:block;color:var(--muted);font-size:10px;text-transform:uppercase}.stat b{font-size:15px;display:block;margin-top:3px}
-    .activity{display:grid;grid-template-columns:90px 100px 90px 1fr;gap:8px;padding:7px 0;border-bottom:1px solid #1d2940;font-size:11px}.condition{line-height:1.45;color:#aab7ca;max-height:62px;overflow:auto}
-    .trade-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.trade-controls input,.trade-controls select{width:110px;background:#09101c;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:9px}.trade-controls button{border:1px solid var(--line);border-radius:7px;padding:9px 12px;color:white;background:#202b40;cursor:pointer;font-weight:700}.trade-controls button.buy-yes{background:#0f5b50}.trade-controls button.buy-no{background:#6d2131}.trade-controls button:hover{filter:brightness(1.2)}.trade-controls button:disabled{opacity:.45;cursor:not-allowed}.suggestion{font-size:18px;padding:12px;border:1px solid var(--line);border-radius:9px;background:#0b1320}
-    .roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px}.agent-card{cursor:pointer;border:1px solid var(--line);border-radius:12px;padding:14px;background:#101827;min-height:150px}.agent-card:hover,.agent-card.selected{border-color:var(--cyan);box-shadow:0 0 0 1px #2dd4bf55}.agent-card h4{margin:0 0 6px;font-size:16px}.guide p,.guide li{color:#c5d0e0;line-height:1.45}.guide ul{margin:6px 0 12px;padding-left:18px}.bar{height:10px;background:#172235;border-radius:8px;overflow:hidden;margin-top:8px}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--gold),var(--cyan));width:0}
-    .lesson{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}.lesson .agent-card{cursor:default;min-height:0}.formula{font-family:IBM Plex Mono,Consolas,monospace;color:var(--cyan);background:#041014;border:1px solid var(--line);padding:10px 12px;border-radius:8px}
-    details.learn{border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:#071416}details.learn>summary{cursor:pointer;color:var(--muted);font-size:13px;letter-spacing:.04em;text-transform:uppercase}details.learn[open]>summary{margin-bottom:10px;color:var(--text)}
-    .fleet-log{min-height:160px;max-height:42vh;overflow:auto;display:flex;flex-direction:column;gap:10px}.bubble{max-width:86%;padding:10px 12px;border-radius:12px;line-height:1.45}.bubble.user{align-self:flex-end;background:#12343a}.bubble.fleet{align-self:flex-start;background:#0b1c20;border:1px solid var(--line)}
-    .fyften{position:fixed;left:0;right:0;bottom:0;z-index:40;pointer-events:none}.fyften-scrim{position:fixed;inset:0;background:#02080acc;opacity:0;transition:opacity .28s ease;pointer-events:none}.fyften.open .fyften-scrim{opacity:1;pointer-events:auto}.fyften-stack{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;pointer-events:none}.fyften-panel{width:min(440px,92vw);max-height:62vh;background:linear-gradient(160deg,#0b1d21,#071114);border:1px solid var(--line);border-radius:18px;padding:14px;margin-bottom:14px;box-shadow:0 18px 60px #0008;opacity:0;transform:translateY(18px) scale(.96);transition:opacity .28s ease,transform .32s cubic-bezier(.2,.8,.2,1);pointer-events:none}.fyften.open .fyften-panel{opacity:1;transform:translateY(0) scale(1);pointer-events:auto}.fyften-orb{pointer-events:auto;width:68px;height:68px;border:0;border-radius:50%;cursor:pointer;font:800 22px/1 Syne,sans-serif;letter-spacing:-.06em;color:#041014;background:radial-gradient(circle at 30% 25%,#9ffbe8,#22f0c8 46%,#0ea5a0);box-shadow:0 0 0 6px #22f0c822,0 10px 30px #22f0c844;transition:transform .22s ease,box-shadow .22s ease}.fyften-orb:hover,.fyften.open .fyften-orb{transform:scale(1.06);box-shadow:0 0 0 8px #22f0c833,0 14px 36px #22f0c855}.fyften-orb.listening{animation:fyftenPulse 1.1s ease-in-out infinite}@keyframes fyftenPulse{50%{transform:scale(1.1);box-shadow:0 0 0 12px #22f0c822}}
-    .helpbtn{border:1px solid var(--line);background:#172238;color:var(--text);border-radius:99px;padding:7px 11px;cursor:pointer}.builder-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(205px,1fr));gap:10px;margin-top:12px}.field{background:#0b1320;border:1px solid var(--line);padding:10px;border-radius:9px}.field label{display:flex;justify-content:space-between;color:#b8c5d9;font-size:12px}.field input{width:100%;margin-top:7px;background:#070d17;color:var(--text);border:1px solid var(--line);padding:8px;border-radius:6px}.field p{font-size:11px;color:var(--muted);line-height:1.35;margin:7px 0 0}.preview{border-left:3px solid var(--purple);background:#0b1320;padding:12px;border-radius:7px;margin-top:12px;line-height:1.5}.tutorial-step{min-height:260px}.tutorial-step h2{font-size:25px}.tutorial-step p,.tutorial-step li{font-size:15px;line-height:1.6;color:#c5d0e0}.tutorial-nav{display:flex;justify-content:space-between;gap:10px;margin-top:18px}.tutorial-nav button{padding:9px 15px;border-radius:7px;border:1px solid var(--line);background:#172238;color:white;cursor:pointer}
-    dialog{width:min(1100px,94vw);max-height:86vh;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:20px}dialog::backdrop{background:#000b}.close{float:right;background:#202b40;border:1px solid var(--line);color:white;border-radius:7px;padding:6px 10px;cursor:pointer}
-    @media(max-width:1100px){.metric{grid-column:span 4}.wide,.side,.half{grid-column:1/-1}}@media(max-width:620px){main{padding:10px}.metric{grid-column:span 6}.metric b{font-size:19px}.activity{grid-template-columns:70px 75px 1fr}.activity .reason{grid-column:1/-1}}
+    .activity{display:grid;grid-template-columns:90px 90px 1fr;gap:8px;padding:7px 0;border-bottom:1px solid #1d2940;font-size:11px}
+    .trade-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.trade-controls input,.trade-controls select{width:120px;background:#09101c;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:9px}.trade-controls button,.helpbtn{border:1px solid var(--line);border-radius:7px;padding:9px 12px;color:white;background:#202b40;cursor:pointer;font-weight:700}
+    .trade-controls button.buy-yes{background:#0f5b50}.trade-controls button.buy-no{background:#6d2131}.trade-controls button:hover{filter:brightness(1.12)}
+    .roster{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}.agent-card{cursor:pointer;border:1px solid var(--line);border-radius:12px;padding:14px;background:#101827;min-height:148px}.agent-card:hover,.agent-card.selected{border-color:var(--cyan);box-shadow:0 0 0 1px #22f0c855}.agent-card h4{margin:0 0 6px;font-size:16px}
+    .card-actions{display:flex;gap:6px;margin-top:10px}.card-actions button{flex:1;font-size:11px;padding:7px 8px}
+    .prompts{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 0}.prompts button{border:1px solid var(--line);background:#0b1c20;color:var(--text);border-radius:99px;padding:6px 10px;font-size:11px;cursor:pointer}
+    .fleet-log{min-height:160px;max-height:42vh;overflow:auto;display:flex;flex-direction:column;gap:10px}.bubble{max-width:92%;padding:10px 12px;border-radius:12px;line-height:1.45}.bubble.user{align-self:flex-end;background:#12343a}.bubble.fleet{align-self:flex-start;background:#0b1c20;border:1px solid var(--line)}.bubble.fleet p{margin:0 0 6px}.bubble.fleet p:last-child{margin:0}.bubble.fleet ul,.bubble.fleet ol{margin:6px 0 0;padding-left:18px}.bubble.fleet li{margin:3px 0}.bubble.fleet strong{color:var(--cyan)}.bubble.fleet code{font-family:IBM Plex Mono,Consolas,monospace;font-size:12px;color:var(--gold)}
+    .fyften{position:fixed;left:0;right:0;bottom:0;z-index:40;pointer-events:none}.fyften-scrim{position:fixed;inset:0;background:#02080acc;opacity:0;pointer-events:none}.fyften.open .fyften-scrim{opacity:1;pointer-events:auto}.fyften-stack{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;pointer-events:none}.fyften-panel{width:min(520px,92vw);max-height:72vh;background:linear-gradient(160deg,#0b1d21,#071114);border:1px solid var(--line);border-radius:18px;padding:14px;margin-bottom:14px;opacity:0;transform:translateY(18px);pointer-events:none}.fyften.open .fyften-panel{opacity:1;transform:none;pointer-events:auto}.fyften-orb{pointer-events:auto;width:68px;height:68px;border:0;border-radius:50%;cursor:pointer;font:800 22px/1 Syne,sans-serif;color:#041014;background:radial-gradient(circle at 30% 25%,#9ffbe8,#22f0c8 46%,#0ea5a0)}
+    .fyften-composer{display:flex;gap:8px;margin-top:12px}.fyften-composer input{flex:1;background:#041014;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:10px 12px}.fyften-composer button{border:0;border-radius:10px;padding:10px 14px;background:var(--cyan);color:#041014;font-weight:800;cursor:pointer}
+    .builder-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}.field{background:#0b1320;border:1px solid var(--line);padding:10px;border-radius:9px}.field input,.field select{width:100%;margin-top:7px;background:#070d17;color:var(--text);border:1px solid var(--line);padding:8px;border-radius:6px}
+    details{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:12px}details>summary{cursor:pointer;color:var(--muted)}
+    .tip{position:relative;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1px solid var(--line);color:var(--muted);font-size:11px;font-weight:800;cursor:help;flex:0 0 16px}.tip:hover,.tip:focus{color:var(--cyan);border-color:var(--cyan)}.tip:hover::after,.tip:focus::after{content:attr(data-tip);position:absolute;left:50%;bottom:calc(100% + 8px);transform:translateX(-50%);width:max-content;max-width:260px;background:#041014;border:1px solid var(--line);color:var(--text);padding:8px 10px;border-radius:8px;font-size:12px;font-weight:500;letter-spacing:0;text-transform:none;line-height:1.35;z-index:80;white-space:normal;box-shadow:0 10px 30px #0008}
+    dialog{width:min(900px,94vw);background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:14px;padding:20px}dialog::backdrop{background:#000b}.close{float:right;background:#202b40;border:1px solid var(--line);color:white;border-radius:7px;padding:6px 10px;cursor:pointer}
+    @media(max-width:1100px){.metric,.wide,.side,.half{grid-column:1/-1}}
   </style>
 </head>
 <body>
-  <div class="banner"><b>fyfteen labs</b> • paper sandbox • real Kalshi data • fake money</div>
+  <div class="banner"><b>fyfteen labs</b> • paper sandbox • real Kalshi data • fake money • no live orders</div>
   <main>
     <header class="top">
       <div class="brand"><h1 class="logo">fyfteen<i>labs</i></h1><div class="sub" id="ticker">Discovering the live 15-minute Bitcoin market…</div></div>
       <div class="livebar">
-        <button class="helpbtn" onclick="openTutorial()">? Learn</button>
         <span class="badge"><i class="dot" id="statusDot"></i><span id="connection">CONNECTING</span></span>
         <span class="badge mono" id="clock">—</span>
-        <span class="badge" id="eventCounter">0 events</span>
+        <a class="badge" href="/logout" id="signOut" style="text-decoration:none;color:inherit;display:none">Sign out</a>
       </div>
     </header>
     <nav class="tabs">
-      <button class="on" onclick="view('live',this)">LIVE DESK</button>
-      <button onclick="view('agents',this)">FLEET</button>
-      <button onclick="view('morning',this)">ANALYTICS</button>
-      <button onclick="view('history',this)">MARKET HISTORY</button>
+      <button class="on" onclick="view('market',this)">MARKET</button>
+      <button onclick="view('fleet',this)">FLEET</button>
+      <button onclick="view('history',this)">HISTORY</button>
     </nav>
 
-    <section id="live"><div class="grid">
-      <div class="card metric" style="--accent:var(--cyan)"><small>Official BRTI</small><b id="brti">—</b><em id="brtiAge">Waiting for 1 Hz feed</em></div>
-      <div class="card metric" style="--accent:var(--gold)"><small>Reference target</small><b id="target">—</b><em>Previous-window BRTI average</em></div>
+    <section id="market"><div class="grid">
+      <div class="card metric"><small>Official BRTI <span class="tip" data-tip="CME CF Bitcoin Real Time Index. Kalshi uses the official 1-second BRTI prints.">?</span></small><b id="brti">—</b><em id="brtiAge">Waiting</em></div>
+      <div class="card metric"><small>Target <span class="tip" data-tip="Strike for this 15-minute contract. YES pays $1 if official BRTI finishes above this.">?</span></small><b id="target">—</b><em>Strike for this contract</em></div>
       <div class="card metric"><small>Distance</small><b id="distance">—</b><em id="distancePct">—</em></div>
-      <div class="card metric"><small>Time remaining</small><b id="remaining">—</b><em id="marketWindow">—</em><div class="progress"><i id="timeProgress"></i></div></div>
-      <div class="card metric" style="--accent:var(--cyan)"><small>YES bid / ask</small><b id="yes">—</b><em id="yesSpread">Executable market</em></div>
-      <div class="card metric" style="--accent:var(--red)"><small>NO bid / ask</small><b id="no">—</b><em>Complementary executable market</em></div>
-      <div class="card metric" style="--accent:var(--gold)"><small>Model P(YES)</small><b id="prob">—</b><em id="marketProb">Market ask —</em></div>
-      <div class="card metric" style="--accent:var(--purple)"><small>Best modeled edge</small><b id="bestEdge">—</b><em id="bestStrategy">Across active experiments</em></div>
-      <div class="card metric"><small>Agent capital</small><b id="equity">—</b><em id="capital">Across 5 isolated portfolios</em></div>
-      <div class="card metric"><small>Book imbalance</small><b id="imbalance">—</b><em id="flowDirection">Neutral order flow</em></div>
-      <div class="card metric"><small>Realized volatility</small><b id="volatility">—</b><em>Recent tick volatility</em></div>
-      <div class="card metric"><small>Target crossings</small><b id="crossings">—</b><em id="lastCrossing">No crossing recorded</em></div>
-
-      <div class="card wide"><h3>BRTI path, target and final-minute average</h3><div class="chart"><canvas id="priceChart"></canvas></div></div>
+      <div class="card metric"><small>Time remaining</small><b id="remaining">—</b><em id="marketWindow">15-minute BTC contract</em><div class="progress"><i id="timeProgress"></i></div></div>
+      <div class="card metric"><small>YES bid / ask <span class="tip" data-tip="Executable prices. Paper buys fill at the ask, walking visible depth. Never the midpoint.">?</span></small><b id="yes">—</b><em>Executable</em></div>
+      <div class="card metric"><small>NO bid / ask</small><b id="no">—</b><em>Executable</em></div>
+      <div class="card wide">
+        <div class="h3row"><h3>BRTI versus target</h3><span class="tip" data-tip="Live official Bitcoin index against this contract's strike. If BRTI finishes above the target, YES settles to $1.">?</span></div>
+        <p class="muted" id="priceChartHint">Waiting for prints this contract…</p>
+        <div class="chart"><canvas id="priceChart"></canvas></div>
+      </div>
       <div class="card side">
-        <h3>Market contract</h3><div class="condition" id="condition">—</div>
-        <h3 style="margin-top:16px">Settlement tracker</h3><div id="settlement" class="muted">Waiting for final minute</div>
-        <h3 style="margin-top:16px">Signal telemetry</h3><div class="statgrid" id="signals"></div>
-      </div>
-
-      <div class="card wide"><h3>Fair probability versus executable YES quotes</h3><div class="chart"><canvas id="probChart"></canvas></div></div>
-      <div class="card side">
-        <h3>Unified YES-price order book</h3>
-        <div class="ladder"><div><h4>YES BIDS</h4><div id="bidLadder"></div></div><div><h4>YES ASKS</h4><div id="askLadder"></div></div></div>
-        <div class="statgrid" style="margin-top:12px">
-          <div class="stat"><span>Bid depth</span><b id="bidDepth">—</b></div>
-          <div class="stat"><span>Ask depth</span><b id="askDepth">—</b></div>
+        <h3>Your paper desk <span class="tip" data-tip="This is your manual account, separate from Fleet bots. Same realistic fills: live book, latency, fees. Fake money only.">?</span></h3>
+        <div class="statgrid">
+          <div class="stat"><span>Cash</span><b id="manualCash">—</b></div>
+          <div class="stat"><span>Owns</span><b id="manualPosition">FLAT</b></div>
         </div>
-      </div>
-
-      <div class="card full">
-        <h3>Live opportunity buckets</h3>
-        <p class="muted" id="opportunityDefinition">An opportunity is leftover edge after costs, not a raw YES/NO guess.</p>
-        <div class="roster" id="opportunityBuckets"></div>
-      </div>
-
-      <div class="card full">
-        <h3>Live research suggestion + manual paper desk</h3>
-        <div class="grid" style="margin-top:0">
-          <div style="grid-column:span 7">
-            <div class="suggestion" id="suggestion">Waiting for synchronized inputs…</div>
-            <p class="muted" id="suggestionReason">Research signal only — not a recommendation. Every button below is local paper execution.</p>
-          </div>
-          <div style="grid-column:span 5">
-            <div class="trade-controls">
-              <label class="muted">Paper $ <input id="manualAmount" type="number" min="1" max="20" step=".25" value="1"></label>
-              <button class="buy-yes" onclick="manualOrder('buy','yes')">PAPER BUY YES</button>
-              <button class="buy-no" onclick="manualOrder('buy','no')">PAPER BUY NO</button>
-              <button onclick="manualOrder('sell','yes')">SELL YES</button>
-              <button onclick="manualOrder('sell','no')">SELL NO</button>
-            </div>
-            <p id="manualStatus" class="muted">Manual paper account loading…</p>
-          </div>
+        <p class="muted" id="manualReason" style="margin-top:10px">Paper only. Buys use the live ask.</p>
+        <div class="trade-controls" style="margin-top:12px">
+          <input id="manualAmount" type="number" min="1" max="500" step="1" value="5" title="Dollars">
+          <button class="buy-yes" onclick="manualOrder('buy','yes')">BUY YES</button>
+          <button class="buy-no" onclick="manualOrder('buy','no')">BUY NO</button>
+          <button onclick="manualOrder('sell','yes')">SELL YES</button>
+          <button onclick="manualOrder('sell','no')">SELL NO</button>
         </div>
+        <p id="manualStatus" class="muted"></p>
+        <h3 style="margin-top:16px">Contract</h3><div id="condition" class="muted">—</div>
+        <h3 style="margin-top:16px">Settlement <span class="tip" data-tip="Kalshi settles from the official 60 one-second BRTI average in the final minute, not the last tick.">?</span></h3>
+        <div id="settlement" class="muted">Waiting for the final minute</div>
+        <h3 style="margin-top:16px">Book</h3>
+        <div class="ladder"><div><h4 class="muted">YES BIDS</h4><div id="bidLadder"></div></div><div><h4 class="muted">YES ASKS</h4><div id="askLadder"></div></div></div>
       </div>
-
-      <div class="card full">
-        <h3>Deployed paper agents</h3>
-        <p class="muted">Click an agent to open its desk. The fleet lives on the Fleet tab. Talk to 15 at the bottom.</p>
-        <div class="roster" id="liveRoster"></div>
+      <div class="card wide">
+        <div class="h3row"><h3>Model P(YES) versus live quotes</h3><span class="tip" data-tip="The Fair Value estimate versus executable YES bid and ask. Bots buy only when leftover edge after fees clears the threshold.">?</span></div>
+        <p class="muted" id="probChartHint">Probability vs the live YES book</p>
+        <div class="chart"><canvas id="probChart"></canvas></div>
       </div>
-
-      <div class="card half"><h3>Recent strategy decisions</h3><div class="scroll" id="decisions"></div></div>
-      <div class="card side"><h3>Recent simulated fills</h3><div class="scroll" id="fills"></div></div>
-      <div class="card" style="grid-column:span 2"><h3>System health</h3><div id="health"></div><h3 style="margin-top:16px">Session tape</h3><div id="sessionStats"></div></div>
+      <div class="card side"><h3>Health</h3><div id="health"></div><h3 style="margin-top:16px">Recent fills</h3><div class="scroll" id="fills"></div></div>
     </div></section>
 
-    <section id="agents" hidden><div class="grid">
+    <section id="fleet" hidden><div class="grid">
       <div class="card full">
-        <h3>Roster</h3>
-        <p class="muted">Each card is one agent in the fleet. Pick its job: Direction trades the last 6 minutes, Both agree the last 4, Late closer only the last 3.</p>
+        <div class="h3row"><h3>Add to Fleet</h3><span class="tip" data-tip="Pick a template, give it fake cash, deploy. Fair Value is the default. Each bot is an isolated paper account.">?</span></div>
+        <p class="muted">Three templates. Click one, name it, deploy.</p>
+        <div class="roster" id="templateRoster"></div>
+        <div class="trade-controls" style="margin-top:14px">
+          <input id="agentName" placeholder="bot-name" maxlength="32">
+          <label class="muted">Starting $ <input id="agentBudget" type="number" min="1" max="10000" value="100"></label>
+          <label class="muted">Min edge % <input id="agentEdge" type="number" min=".5" max="20" step=".5" value="3"></label>
+          <button class="buy-yes" onclick="createAgent(true)">USE TEMPLATE + DEPLOY</button>
+          <button onclick="createAgent(false)">CREATE PAUSED</button>
+        </div>
+        <p id="agentStatus" class="muted">Each Fleet bot has its own simulated cash.</p>
+      </div>
+      <div class="card full">
+        <div class="h3row"><h3>Active Fleet</h3><span class="tip" data-tip="Click a card to inspect. Pause stops new buys; open positions still settle. Retire cashes out.">?</span></div>
         <div class="roster" id="agentRoster"></div>
       </div>
       <div class="card full" id="agentDetail">
-        <h3>Select an agent</h3>
-        <p class="muted">Click a card above to see leftover vs required leftover, cash, and when it is allowed to buy.</p>
-      </div>
-      <div class="card full">
-        <h3>Create an agent</h3>
-        <p class="muted">Pick the job first. Direction is the one that actually looks for buys most of the window.</p>
-        <div class="roster" id="templateRoster"></div>
-        <div class="trade-controls" style="margin-top:14px">
-          <input id="agentName" placeholder="agent-name" maxlength="32">
-          <label class="muted">Starting $ <input id="agentBudget" type="number" min="1" max="10000" step="1" value="20"></label>
-          <button onclick="toggleAdvanced()">EDIT ADVANCED SETTINGS</button>
-          <button onclick="createAgent(true)">CREATE + DEPLOY</button>
-          <button onclick="createAgent(false)">CREATE PAUSED</button>
-        </div>
-        <div id="advancedBuilder" hidden>
-          <div class="preview bad"><b>Advanced:</b> changing these can increase overtrading, drawdown, and false confidence. The template remains the reset point.</div>
-          <div class="builder-grid">
-            <div class="field"><label><b>Minimum executable edge</b><span>percent</span></label>
-              <input id="agentEdge" type="number" min=".5" max="20" step=".5" value="3">
-              <p>Required leftover after fees, safety, and uncertainty.</p>
-            </div>
-          </div>
-          <div id="policyFields" class="builder-grid"></div>
-        </div>
-        <div id="triggerPreview" class="preview">Choose a bucket template to see when it is allowed to buy.</div>
-        <p id="agentStatus" class="muted">Each bot is an isolated paper account. It only buys when its named bucket is open.</p>
-      </div>
-      <div class="card full">
-        <details class="learn">
-          <summary>Learn what an opportunity is before you change settings</summary>
-          <p id="opportunityLesson">An opportunity is leftover executable edge, not a YES/NO guess.</p>
-          <p class="formula" id="opportunityFormula">leftover = forecast − executable ask − fee − safety − uncertainty</p>
-          <p class="muted">If leftover is not positive, wait. A waiting bot is not down 100%.</p>
-          <h3 style="margin-top:16px">Named buckets your bots can act on</h3>
-          <div class="lesson" id="opportunitySchool"></div>
-          <h3 style="margin-top:16px">Not an opportunity</h3>
-          <div class="lesson" id="notOpportunities"></div>
-        </details>
+        <h3>Select a Fleet bot</h3>
+        <p class="muted">You'll see what it owns, why it last waited, and beginner settings.</p>
       </div>
     </div></section>
 
-    <section id="morning" hidden><div class="grid">
-      <div class="card full"><h3>Strategy comparison</h3><p class="bad">An overnight result is exploratory evidence, not proof of an edge.</p><div class="scroll"><table><thead><tr><th>Strategy</th><th>Start / total</th><th>Bank</th><th>Trades</th><th>Wins/Losses</th><th>Win rate</th><th>Gross P&L</th><th>Fees / spread</th><th>Net P&L</th><th>Avg P&L</th><th>Max DD</th><th>Avg edge</th><th>Profit factor</th></tr></thead><tbody id="analytics"></tbody></table></div></div>
-      <div class="card full"><h3>Strategy equity curves</h3><div class="chart"><canvas id="equityChart"></canvas></div></div>
-      <div class="card side"><h3>Probability calibration / Brier score</h3><table><thead><tr><th>Bucket</th><th>N</th><th>Actual</th><th>Brier</th></tr></thead><tbody id="calibration"></tbody></table></div>
-      <div class="card side"><h3>Walk-forward model validation</h3><div class="statgrid" id="modelScores"></div></div>
-      <div class="card half"><h3>P&L attribution — always inspect sample size</h3><div class="scroll"><table><thead><tr><th>Dimension</th><th>Bucket</th><th>N</th><th>Net P&L</th></tr></thead><tbody id="breakdowns"></tbody></table></div></div>
+    <section id="history" hidden><div class="grid">
+      <div class="card full"><h3>Paper performance</h3><div class="scroll"><table><thead><tr><th>Bot</th><th>Trades</th><th>Wins/Losses</th><th>Win rate</th><th>Net P&L</th><th>Fees</th><th>Avg trade</th><th>Max DD</th><th>Equity</th></tr></thead><tbody id="analytics"></tbody></table></div></div>
+      <div class="card full"><h3>Completed markets</h3><div class="scroll"><table><thead><tr><th>Market</th><th>Open</th><th>Close</th><th>Target</th><th>Status</th><th>Result</th></tr></thead><tbody id="markets"></tbody></table></div></div>
     </div></section>
-
-    <section id="history" hidden><div class="grid"><div class="card full"><h3>Recorded 15-minute markets — click a row to inspect</h3><div class="scroll"><table><thead><tr><th>Market</th><th>Open</th><th>Close</th><th>Target</th><th>Status</th><th>Official result</th></tr></thead><tbody id="markets"></tbody></table></div></div></div></section>
   </main>
-
-  <dialog id="marketDialog"><button class="close" onclick="$('marketDialog').close()">Close</button><h2 id="detailTitle">Market detail</h2><div id="marketDetail"></div></dialog>
-  <dialog id="tutorialDialog"><button class="close" onclick="closeTutorial()">Close</button><div id="tutorialStep" class="tutorial-step"></div><div class="tutorial-nav"><button onclick="tutorialMove(-1)">← Back</button><span id="tutorialProgress" class="muted"></span><button onclick="tutorialMove(1)">Next →</button></div></dialog>
+  <dialog id="marketDialog"><button class="close" onclick="$('marketDialog').close()">Close</button><h2 id="detailTitle">Market</h2><div id="marketDetail"></div></dialog>
   <div id="fyftenRoot" class="fyften">
     <div class="fyften-scrim" onclick="closeFyften()"></div>
     <div class="fyften-stack">
-      <div class="fyften-panel" id="fyftenPanel">
+      <div class="fyften-panel">
+        <div class="h3row"><h3>FYFTEN</h3><span class="tip" data-tip="Text operator for the Fleet. It can list, create, pause, fund, and explain bots through tools. It cannot trade or invent Bitcoin odds.">?</span></div>
         <div class="fleet-log" id="fleetLog"></div>
-        <p class="muted" id="fleetStatus">Tap 15 and talk. Voice in, text out. Paste FIREWORKS_API_KEY and GROQ_API_KEY when you have them.</p>
+        <div class="prompts" id="fyftenPrompts"></div>
+        <p class="muted" id="fleetStatus">Click 15, then type.</p>
+        <form class="fyften-composer" onsubmit="return sendFyften(event)">
+          <input id="fyftenInput" maxlength="4000" autocomplete="off" placeholder="Type to 15…">
+          <button type="submit">Send</button>
+        </form>
       </div>
-      <button type="button" class="fyften-orb" id="fyftenOrb" onclick="toggleFyften()">15</button>
+      <button type="button" class="fyften-orb" onclick="toggleFyften()">15</button>
     </div>
   </div>
-
   <script>
     const $=id=>document.getElementById(id);
     const money=x=>x==null||!Number.isFinite(Number(x))?'—':'$'+Number(x).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
-    const pct=x=>x==null||!Number.isFinite(Number(x))?'—':(100*Number(x)).toFixed(2)+'%';
+    const pct=x=>x==null||!Number.isFinite(Number(x))?'—':(100*Number(x)).toFixed(1)+'%';
     const num=(x,d=2)=>x==null||!Number.isFinite(Number(x))?'—':Number(x).toFixed(d);
     const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     const signedMoney=x=>x==null?'—':`${x>=0?'+':'−'}${money(Math.abs(x))}`;
     const pnlClass=x=>x>0?'positive':x<0?'negative':'muted';
-    let latestState=null, selectedAgent=null, agentDossier=null, selectedTemplateId=null;
+    const pretty=s=>String(s||'').split('-').filter(Boolean).map(p=>p[0].toUpperCase()+p.slice(1)).join(' ')||s;
+    const tip=t=>`<span class="tip" data-tip="${esc(t)}" tabindex="0">?</span>`;
+    let csrf='', latestState=null, catalogCache={}, selectedAgent=null, selectedTemplateId='fair-value', agentDossier=null, fyftenBusy=false;
+    const SUGGEST=['Create a Fair Value bot with $100','Why didn\'t my Momentum bot trade?','Show my best-performing paper bot','Pause all bots','Explain Late Settlement','Give momentum $50 more fake cash'];
 
-    const common={responsive:true,maintainAspectRatio:false,animation:false,interaction:{mode:'index',intersect:false},scales:{x:{display:false},y:{grid:{color:'#202c42'},ticks:{color:'#8291aa'}}},plugins:{legend:{labels:{color:'#9cabc1',boxWidth:12}}}};
-    const priceChart=new Chart($('priceChart'),{type:'line',data:{labels:[],datasets:[
-      {label:'BRTI',data:[],borderColor:'#2dd4bf',backgroundColor:'#2dd4bf22',fill:true,pointRadius:0,borderWidth:2},
-      {label:'Target',data:[],borderColor:'#fb7185',pointRadius:0,borderDash:[7,5]},
-      {label:'Settlement average',data:[],borderColor:'#fbbf24',pointRadius:0,borderWidth:2},
-      {label:'Paper entries',type:'scatter',data:[],backgroundColor:'#c084fc',pointRadius:5,pointStyle:'triangle'}]},options:common});
-    const probChart=new Chart($('probChart'),{type:'line',data:{labels:[],datasets:[
-      {label:'Ensemble P(YES)',data:[],borderColor:'#fbbf24',pointRadius:0,borderWidth:2},
-      {label:'Settlement model',data:[],borderColor:'#c084fc',pointRadius:0,borderDash:[5,4]},
-      {label:'Terminal-price model',data:[],borderColor:'#60a5fa',pointRadius:0,borderDash:[3,4]},
-      {label:'Shrunk trend forecast',data:[],borderColor:'#f97316',pointRadius:0,borderDash:[7,4]},
-      {label:'YES bid',data:[],borderColor:'#2dd4bf',pointRadius:0},
-      {label:'YES ask',data:[],borderColor:'#fb7185',pointRadius:0,backgroundColor:'#fb718511',fill:'-1'}]},
-      options:{...common,scales:{...common.scales,y:{min:0,max:1,grid:{color:'#202c42'},ticks:{color:'#8291aa',callback:v=>(v*100)+'%'}}}}});
-    const equityChart=new Chart($('equityChart'),{type:'line',data:{labels:[],datasets:[]},options:common});
-    let agentEquityChart=null, agentEdgeChart=null;
-
-    async function charts(){
-      const d=(await fetch('/api/chart').then(r=>r.json())).reverse();
-      const labels=d.map(x=>new Date(x.ts*1000).toLocaleTimeString());
-      priceChart.data.labels=probChart.data.labels=labels;
-      priceChart.data.datasets[0].data=d.map(x=>x.brti);
-      priceChart.data.datasets[1].data=d.map(x=>x.target);
-      priceChart.data.datasets[2].data=d.map(x=>x.settlement_average);
-      priceChart.data.datasets[3].data=(latestState?.fills||[]).map(fill=>{
-        let nearest=d.reduce((a,b)=>Math.abs(b.ts-fill.fill_ts)<Math.abs(a.ts-fill.fill_ts)?b:a,d[0]);
-        return nearest?{x:new Date(nearest.ts*1000).toLocaleTimeString(),y:nearest.brti}:null;
-      }).filter(Boolean);
-      probChart.data.datasets[0].data=d.map(x=>x.p_yes);
-      probChart.data.datasets[1].data=d.map(x=>x.p_settlement);
-      probChart.data.datasets[2].data=d.map(x=>x.p_terminal);
-      probChart.data.datasets[3].data=d.map(x=>x.p_trend);
-      probChart.data.datasets[4].data=d.map(x=>x.yes_bid);
-      probChart.data.datasets[5].data=d.map(x=>x.yes_ask);
-      priceChart.update();probChart.update();
-    }
-
-    const pendingControls={};
-    function applyControlToState(name, data){
-      if(!name || !data) return;
-      if(!latestState) latestState={strategies:[]};
-      if(!latestState.strategies) latestState.strategies=[];
-      const row=latestState.strategies.find(x=>x.name===name);
-      const oldCash=row?.cash||0, oldBank=row?.bank||0, oldTotal=row?.total||0;
-      const cash=data.cash!=null?data.cash:oldCash;
-      const bank=data.bank!=null?data.bank:oldBank;
-      const pos=Math.max(0, oldTotal-oldCash-oldBank);
-      const next={
-        cash, bank, total:cash+bank+pos,
-        allocated_capital:data.allocated_capital!=null?data.allocated_capital:row?.allocated_capital,
-        threshold:data.threshold!=null?data.threshold:row?.threshold,
-        kind:data.kind||row?.kind,
-        deployed:data.status==='deployed'?true:data.status==='paused'?false:(data.deployed!=null?!!data.deployed:row?.deployed)
-      };
-      if(row) Object.assign(row, next);
-      pendingControls[name]={...next, ts:Date.now()};
-      if(agentDossier?.name===name){
-        if(data.cash!=null) agentDossier.cash=data.cash;
-        if(data.allocated_capital!=null) agentDossier.allocated_capital=data.allocated_capital;
-        if(data.threshold!=null) agentDossier.threshold=data.threshold;
-        if(data.kind) agentDossier.kind=data.kind;
-        if(data.policy) agentDossier.policy=data.policy;
-        if(data.status==='deployed'||data.status==='paused') agentDossier.deployed=data.status==='deployed';
+    function md(text){
+      const raw=String(text||'').trim();
+      if(!raw) return '<p class="muted">No reply</p>';
+      let source=raw;
+      if(!/^\s*[-*]|\n/.test(source) && source.length>180){
+        const parts=source.split(/(?<=\.)\s+/).filter(Boolean);
+        if(parts.length>=3) source=parts.map(p=>'- '+p.trim()).join('\n');
       }
+      const inline=s=>esc(s).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/`([^`]+)`/g,'<code>$1</code>');
+      let html='', list=null;
+      const flush=()=>{ if(list){ html+=list==='ul'?'</ul>':'</ol>'; list=null; } };
+      for(const line of source.split(/\n/)){
+        const ul=line.match(/^\s*[-*]\s+(.+)/);
+        const ol=line.match(/^\s*\d+\.\s+(.+)/);
+        const h=line.match(/^#{1,3}\s+(.+)/);
+        if(ul){ if(list!=='ul'){ flush(); html+='<ul>'; list='ul'; } html+=`<li>${inline(ul[1])}</li>`; continue; }
+        if(ol){ if(list!=='ol'){ flush(); html+='<ol>'; list='ol'; } html+=`<li>${inline(ol[1])}</li>`; continue; }
+        flush();
+        if(!line.trim()) continue;
+        html+=`<p>${h? '<strong>'+inline(h[1])+'</strong>':inline(line)}</p>`;
+      }
+      flush();
+      return html;
     }
-    function absorbPending(s){
-      (s.strategies||[]).forEach(row=>{
-        const p=pendingControls[row.name];
-        if(!p) return;
-        const caught=
-          (p.allocated_capital==null||Math.abs((row.allocated_capital||0)-p.allocated_capital)<.005)&&
-          (p.cash==null||Math.abs((row.cash||0)-p.cash)<.005)&&
-          (p.threshold==null||Math.abs((row.threshold||0)-p.threshold)<1e-6)&&
-          (!p.kind||row.kind===p.kind);
-        if(caught || Date.now()-p.ts>10000){ delete pendingControls[row.name]; return; }
-        if(p.cash!=null){
-          const pos=Math.max(0,(row.total||0)-(row.cash||0)-(row.bank||0));
-          row.cash=p.cash;
-          if(p.bank!=null) row.bank=p.bank;
-          row.total=row.cash+(row.bank||0)+pos;
-        }
-        if(p.allocated_capital!=null) row.allocated_capital=p.allocated_capital;
-        if(p.threshold!=null) row.threshold=p.threshold;
-        if(p.kind) row.kind=p.kind;
-        if(p.deployed!=null) row.deployed=p.deployed;
-      });
+    async function api(url, opts={}){
+      const headers={'Content-Type':'application/json', ...(opts.headers||{})};
+      if((opts.method||'GET')!=='GET' && csrf) headers['X-CSRF-Token']=csrf;
+      const response=await fetch(url,{...opts, headers, credentials:'same-origin'});
+      if(response.status===401){ location.href='/login'; throw new Error('auth'); }
+      return response;
+    }
+    async function boot(){
+      const session=await fetch('/api/session',{credentials:'same-origin'}).then(r=>r.json());
+      if(session.auth_required && !session.ok){ location.href='/login'; return; }
+      csrf=session.csrf||'';
+      if(session.auth_required) $('signOut').style.display='inline-flex';
+      $('fyftenPrompts').innerHTML=SUGGEST.map(t=>`<button type="button" data-prompt="${esc(t)}">${esc(t)}</button>`).join('');
+      $('fyftenPrompts').onclick=e=>{ const t=e.target.closest('button')?.dataset.prompt; if(t) sendFleet(t); };
+      try{ catalogCache=await api('/api/catalog').then(r=>r.json()); renderTemplates(catalogCache); }catch(e){}
+      connect(); charts(); setInterval(charts,4000); setInterval(()=>$('clock').textContent=new Date().toLocaleString(),1000);
+    }
+    function axisOpts(kind){
+      return {responsive:true,maintainAspectRatio:false,animation:false,
+        interaction:{mode:'index',intersect:false},
+        plugins:{legend:{labels:{color:'#9cabc1',boxWidth:12}},
+          tooltip:{callbacks:{label:item=>{
+            const v=item.parsed.y;
+            const shown=kind==='money'?money(v):pct(v);
+            return `${item.dataset.label}: ${shown}`;
+          }}}},
+        scales:{
+          x:{ticks:{color:'#8291aa',maxTicksLimit:7,maxRotation:0}, grid:{color:'#14242a'}},
+          y:{grid:{color:'#202c42'}, suggestedMin:kind==='pct'?0:undefined, suggestedMax:kind==='pct'?1:undefined,
+            ticks:{color:'#8291aa', callback:v=>kind==='money'?'$'+Number(v).toLocaleString():(100*v).toFixed(0)+'%'}}
+        }};
+    }
+    const priceChart=new Chart($('priceChart'),{type:'line',data:{labels:[],datasets:[
+      {label:'BRTI',data:[],borderColor:'#2dd4bf',fill:true,backgroundColor:'#2dd4bf22',pointRadius:0,borderWidth:2,tension:.15},
+      {label:'Target',data:[],borderColor:'#fb7185',pointRadius:0,borderDash:[6,4],borderWidth:2}]},options:axisOpts('money')});
+    const probChart=new Chart($('probChart'),{type:'line',data:{labels:[],datasets:[
+      {label:'Model P(YES)',data:[],borderColor:'#fbbf24',pointRadius:0,borderWidth:2,tension:.15},
+      {label:'YES ask',data:[],borderColor:'#fb7185',pointRadius:0,borderWidth:2},
+      {label:'YES bid',data:[],borderColor:'#2dd4bf',pointRadius:0,borderWidth:2}]},options:axisOpts('pct')});
+    let agentEquityChart=null;
+
+    function view(id,btn){
+      ['market','fleet','history'].forEach(x=>$(x).hidden=x!==id);
+      document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on')); btn.classList.add('on');
+      if(id==='history') loadHistory();
+      if(id==='fleet') renderTemplates(catalogCache.templates?catalogCache:latestState?.catalog||{});
+    }
+    function connect(){
+      const ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);
+      ws.onmessage=e=>render(JSON.parse(e.data));
+      ws.onclose=()=>{ $('connection').textContent='RECONNECTING'; $('statusDot').className='dot'; setTimeout(connect,2000); };
     }
     function render(s){
-      absorbPending(s);
       latestState=s;
-      if(!s.ready)return;
-      const x=s.features,b=s.book,m=s.market,h=s.health.kalshi;
-      $('ticker').textContent=`${m.ticker} • ${new Date(m.open_ts*1000).toLocaleTimeString()}–${new Date(m.close_ts*1000).toLocaleTimeString()}`;
-      $('condition').textContent=m.condition;
-      $('connection').textContent=h.status.toUpperCase();
-      $('statusDot').className='dot '+(h.status==='connected'?'ok':'');
-      $('eventCounter').textContent=`${Number(s.session.raw_events||0).toLocaleString()} raw events`;
-      $('brti').textContent=money(x.brti);$('target').textContent=money(m.target);
-      const distance=x.brti==null?null:x.brti-m.target;
-      $('distance').textContent=signedMoney(distance);$('distance').className=pnlClass(distance);
-      $('distancePct').textContent=distance==null?'Waiting for BRTI':`${pct(distance/m.target)} from target`;
-      $('remaining').textContent=`${Math.floor(x.seconds_left/60)}:${String(Math.floor(x.seconds_left%60)).padStart(2,'0')}`;
-      $('marketWindow').textContent=`closes ${new Date(m.close_ts*1000).toLocaleTimeString()}`;
-      $('timeProgress').style.width=`${Math.max(0,Math.min(100,100*(1-x.seconds_left/Math.max(1,m.close_ts-m.open_ts))))}%`;
-      $('yes').textContent=`${num(b.yes_bid)} / ${num(b.yes_ask)}`;$('no').textContent=`${num(b.no_bid)} / ${num(b.no_ask)}`;
-      $('yesSpread').textContent=`spread ${pct(x.spread)}`;$('prob').textContent=pct(x.p_yes);$('marketProb').textContent=`YES ask ${pct(b.yes_ask)}`;
-      const candidates=s.strategies.filter(e=>e.net_edge!=null).sort((a,b)=>b.net_edge-a.net_edge);
-      $('bestEdge').textContent=candidates.length?pct(candidates[0].net_edge):'—';$('bestStrategy').textContent=candidates.length?`${candidates[0].name} • ${candidates[0].action}`:'Waiting for decisions';
-      $('equity').textContent=money(s.session.aggregate_equity);$('capital').textContent=`${s.session.deployed_agents}/${s.session.agent_count} deployed • ${money(s.session.starting_capital)} allocated`;
-      if(!$('templateRoster').dataset.ready){
-        $('templateRoster').dataset.ready='1';
-        renderPolicyBuilder();
-        renderTemplates();
-        const templates=s.catalog?.templates||[];
-        selectTemplate((templates.find(t=>t.recommended)||templates[0]||{}).id);
-        if(!localStorage.getItem('btc15-tutorial-seen'))setTimeout(openTutorial,300);
-      }
-      $('manualAmount').max=s.session.hard_trade_cap;
-      $('imbalance').textContent=pct(x.imbalance);$('flowDirection').textContent=x.imbalance>.15?'Bid-heavy / bullish':x.imbalance<-.15?'Ask-heavy / bearish':'Balanced book';
-      $('volatility').textContent=x.volatility==null?'—':pct(x.volatility);$('crossings').textContent=x.crossings??0;$('lastCrossing').textContent=x.since_crossing>=0?`${num(x.since_crossing,0)}s since crossing`:'No crossing recorded';
-      $('brtiAge').textContent=h.last_event_ts?`Kalshi event age ${num(Date.now()/1000-h.last_event_ts,1)}s`:'Waiting for feed';
-      $('settlement').innerHTML=`${x.settlement_average?`<b class="gold" style="font-size:22px">${money(x.settlement_average)}</b><br>${x.observation_count}/60 official observations<br>`:''}<b>Projected final average ${money(x.expected_settlement)}</b><br>model σ ${money(x.settlement_std)} • P(YES) ${pct(x.p_settlement)}<br><span class="bad">ESTIMATED until official result</span>`;
-      $('signals').innerHTML=[['Model',x.model_source],['Regime',x.regime],['Confidence',pct(x.confidence)],['Uncertainty',pct(x.uncertainty)],['Settlement P(YES)',pct(x.p_settlement)],['Trend P(YES)',pct(x.p_trend)],['Horizon agreement',pct(x.horizon_agreement)],['Trend strength',num(x.trend_strength,2)],['Terminal P(YES)',pct(x.p_terminal)],['Microprice',pct(x.microprice)],['Weighted imbalance',pct(x.weighted_imbalance)],['Book flow',pct(x.book_flow)],['Trade flow',pct(x.trade_flow)]].map(v=>`<div class="stat"><span>${v[0]}</span><b>${esc(v[1])}</b></div>`).join('');
-      $('bidDepth').textContent=num(b.bid_depth,2);$('askDepth').textContent=num(b.ask_depth,2);
-      $('bidLadder').innerHTML=(b.yes_bids||[]).map(l=>`<div class="level bid"><b>${pct(l.price)}</b><span>${num(l.size,2)}</span></div>`).join('')||'<span class="muted">No synchronized levels</span>';
-      $('askLadder').innerHTML=(b.yes_asks||[]).map(l=>`<div class="level ask"><b>${pct(l.price)}</b><span>${num(l.size,2)}</span></div>`).join('')||'<span class="muted">No synchronized levels</span>';
-      const sg=s.suggestion||{};
-      $('suggestion').innerHTML=`<b class="${sg.action?.includes('BUY YES')?'yes':sg.action?.includes('BUY NO')?'no':'gold'}">${esc(sg.action||'WAIT')}</b>${sg.side?` at executable ${pct(sg.price)} • do not pay above ${pct(sg.max_price)} • suggested paper size ${money(sg.size)}`:''}`;
-      const catalog=s.catalog||{};
-      $('opportunityDefinition').textContent=s.opportunity_definition||catalog.opportunity_definition||$('opportunityDefinition').textContent;
-      if($('opportunityLesson'))$('opportunityLesson').textContent=s.opportunity_definition||catalog.opportunity_definition||$('opportunityLesson').textContent;
-      if($('opportunityFormula'))$('opportunityFormula').textContent=s.opportunity_formula||catalog.opportunity_formula||$('opportunityFormula').textContent;
-      $('opportunityBuckets').innerHTML=(s.opportunities||[]).map(o=>{
-        const open=o.status==='open';
-        return `<div class="agent-card">
-          <h4>${esc(o.plain_name||o.title)}</h4>
-          <div class="${open?'ok':'gold'}">${open?`OPEN ${(o.side||'').toUpperCase()} • leftover ${pct(o.edge)}`:esc(o.plain_status||o.status)}</div>
-          <p>${esc(o.forecast)}</p>
-          <p class="muted">${esc(o.window)}</p>
-        </div>`;
-      }).join('')||'<span class="muted">Waiting for synchronized market data.</span>';
-      if($('opportunitySchool') && !$('opportunitySchool').dataset.ready){
-        $('opportunitySchool').dataset.ready='1';
-        $('opportunitySchool').innerHTML=(s.opportunities||catalog.opportunity_buckets||[]).map(o=>`
-          <div class="agent-card" data-bucket="${esc(o.id)}">
-            <h4>${esc(o.plain_name||o.title)}</h4>
-            <div class="${o.status==='open'?'ok':'gold'}" data-bucket-status>${esc(o.plain_status||o.window||'Named bucket')}</div>
-            <p>${esc(o.teach||o.forecast)}</p>
-            <p class="muted"><b>Example.</b> ${esc(o.example||'')}</p>
-            <p class="muted"><b>You can change.</b> ${esc(o.user_can_change||'')}</p>
-          </div>`).join('');
-      } else if($('opportunitySchool')){
-        (s.opportunities||[]).forEach(o=>{
-          const node=$('opportunitySchool').querySelector(`[data-bucket="${o.id}"] [data-bucket-status]`);
-          if(node){node.className=o.status==='open'?'ok':'gold';node.textContent=o.plain_status||o.window||'';}
-        });
-      }
-      if($('notOpportunities') && !$('notOpportunities').dataset.ready){
-        $('notOpportunities').dataset.ready='1';
-        $('notOpportunities').innerHTML=(s.not_opportunities||catalog.not_opportunities||[]).map(n=>`
-          <div class="agent-card"><h4>${esc(n.title)}</h4><p class="muted">${esc(n.why)}</p></div>`).join('');
-      }
-      $('suggestionReason').textContent=(sg.reason||'')+' • Research signal only — not a recommendation.';
-      const mp=s.manual||{};
-      $('manualStatus').innerHTML=`Position <b>${esc(mp.position||'FLAT')}</b> • cash ${money(mp.cash)} • bank ${money(mp.bank)} • equity ${money(mp.equity)} • total ${money(mp.total)}<br>${esc(mp.reason||'')}`;
-      upsertRoster($('liveRoster'), s.strategies.filter(e=>e.deployed), 'No agents deployed. Open Fleet to create one.');
-      upsertRoster($('agentRoster'), s.strategies, 'No agents yet. Create one below or talk to 15.');
-      patchAgentLive(s);
-      $('decisions').innerHTML=(s.recent_decisions||[]).map(d=>`<div class="activity"><span class="mono">${new Date(d.ts*1000).toLocaleTimeString()}</span><b>${esc(d.experiment)}</b><span class="${d.action==='HOLD'?'muted':d.side==='yes'?'yes':'no'}">${esc(d.action)}</span><span class="reason">${pct(d.net_edge)} edge • ${esc(d.reason)}</span></div>`).join('')||'<span class="muted">No decisions yet</span>';
-      $('fills').innerHTML=(s.fills||[]).slice().reverse().map(f=>`<div class="activity" style="grid-template-columns:75px 85px 1fr"><span class="mono">${new Date(f.fill_ts*1000).toLocaleTimeString()}</span><b>${esc(f.experiment)}</b><span class="${f.side==='yes'?'yes':'no'}">${esc((f.action||'buy').toUpperCase())} ${esc(f.side.toUpperCase())} ${num(f.contracts,2)} @ ${pct(f.price)}<br><span class="muted">fee ${money(f.fee)} • latency ${f.latency_ms}ms</span></span></div>`).join('')||'<span class="muted">No simulated fills</span>';
-      $('health').innerHTML=Object.entries(s.health).map(([k,v])=>`<p><b class="${v.status==='connected'||v.status==='ok'?'ok':'bad'}">● ${esc(k)}: ${esc(v.status)}</b><br><span class="muted">age ${v.last_event_ts?num(Date.now()/1000-v.last_event_ts,1)+'s':'—'} • reconnects ${v.reconnects}</span><br><span class="bad">${esc(v.error||'')}</span></p>`).join('');
-      const cal=s.model?.calibration||{};
-      $('sessionStats').innerHTML=`<div class="statgrid"><div class="stat"><span>Markets</span><b>${s.session.markets}</b></div><div class="stat"><span>Decisions</span><b>${Number(s.session.decisions||0).toLocaleString()}</b></div><div class="stat"><span>Fills</span><b>${s.session.fills}</b></div><div class="stat"><span>Book</span><b class="${b.valid?'ok':'bad'}">${b.valid?'VALID':'STALE'}</b></div><div class="stat"><span>Calibration</span><b class="${cal.active?'ok':'gold'}">${cal.active?'VALIDATED':'FALLBACK'}</b></div><div class="stat"><span>Samples</span><b>${cal.samples||0}/${cal.minimum_samples||200}</b></div></div>`;
+      if(s.catalog?.templates) { catalogCache=s.catalog; renderTemplates(s.catalog); }
+      const ready=!!s.ready, m=s.market||{}, x=s.features||{}, b=s.book||{}, man=s.manual||{};
+      $('connection').textContent=ready?'LIVE':'WAITING';
+      $('statusDot').className='dot'+(ready?' ok':'');
+      $('ticker').textContent=m.ticker?`${m.ticker} · paper only`:'Discovering the live 15-minute Bitcoin market…';
+      $('brti').textContent=x.brti?money(x.brti):'—';
+      $('target').textContent=m.target?money(m.target):'—';
+      $('distance').textContent=(x.brti&&m.target)?money(x.brti-m.target):'—';
+      $('distancePct').textContent=(x.brti&&m.target)?((x.brti-m.target)/m.target*100).toFixed(3)+'% vs strike':'—';
+      const left=x.seconds_left||0;
+      $('remaining').textContent=left?`${Math.floor(left/60)}:${String(Math.floor(left%60)).padStart(2,'0')}`:'—';
+      $('timeProgress').style.width=`${Math.max(0,Math.min(100,(900-left)/9))}%`;
+      $('yes').textContent=`${pct(b.yes_bid)} / ${pct(b.yes_ask)}`;
+      $('no').textContent=`${pct(b.no_bid)} / ${pct(b.no_ask)}`;
+      $('condition').textContent=m.condition||'—';
+      $('settlement').textContent=x.observation_count?`${x.observation_count}/60 official prints · avg ${money(x.settlement_average)}`:'Waiting for the final minute';
+      $('bidLadder').innerHTML=(b.yes_bids||[]).map(r=>`<div class="level bid"><span>${pct(r.price)}</span><b>${num(r.size,1)}</b></div>`).join('')||'<span class="muted">—</span>';
+      $('askLadder').innerHTML=(b.yes_asks||[]).map(r=>`<div class="level ask"><span>${pct(r.price)}</span><b>${num(r.size,1)}</b></div>`).join('')||'<span class="muted">—</span>';
+      $('health').innerHTML=Object.entries(s.health||{}).map(([k,v])=>`<p><b class="${v.status==='ok'||v.status==='connected'?'ok':'bad'}">${esc(k)}: ${esc(v.status)}</b></p>`).join('');
+      $('fills').innerHTML=(s.fills||[]).slice(-8).reverse().map(f=>`<div class="activity"><span>${new Date(f.fill_ts*1000).toLocaleTimeString()}</span><b>${esc(pretty(f.experiment))}</b><span class="${f.side==='yes'?'yes':'no'}">${esc(f.side)} ${num(f.contracts,2)} @ ${pct(f.price)}</span></div>`).join('')||'<span class="muted">No fills yet</span>';
+      $('manualCash').textContent=money(man.cash);
+      $('manualPosition').textContent=man.position||'FLAT';
+      $('manualReason').textContent=man.reason||'Paper only. Buys use the live ask.';
+      if(x.brti && m.target) $('priceChartHint').textContent=`${money(x.brti)} vs ${money(m.target)} · ${$('remaining').textContent} left`;
+      if(x.p_yes!=null) $('probChartHint').textContent=`Model ${pct(x.p_yes)} · YES ${pct(b.yes_bid)} / ${pct(b.yes_ask)}`;
+      latestState.agent_kinds=s.agent_kinds||s.catalog?.kinds||[];
+      upsertRoster($('agentRoster'), s.strategies, 'No Fleet bots yet. Use a template above.');
+      if(selectedAgent) patchAgentLive(s);
     }
-
-    let ws;
-    function connect(){
-      ws=new WebSocket(`${location.protocol==='https:'?'wss':'ws'}://${location.host}/ws`);
-      ws.onmessage=e=>render(JSON.parse(e.data));
-      ws.onclose=()=>{ $('connection').textContent='DASHBOARD RECONNECTING';$('statusDot').className='dot';setTimeout(connect,2000) };
-    }
-    connect();setInterval(charts,5000);setInterval(()=>$('clock').textContent=new Date().toLocaleString(),1000);charts();
-
-    function renderRosterCards(agents){
-      return (agents||[]).map(e=>{
-        const kind=(latestState?.agent_kinds||[]).find(k=>k.kind===e.kind);
-        return `<div class="agent-card ${selectedAgent===e.name?'selected':''}" data-agent="${esc(e.name)}" onclick="openAgent('${esc(e.name)}')">
-          <h4>${esc(e.name)}</h4>
-          <div class="muted" data-job>${esc(kind?.title||e.kind)}</div>
-          <p style="margin:8px 0 0" data-live-line><b class="${e.deployed?'ok':'gold'}">${e.deployed?'DEPLOYED':'PAUSED'}</b>
-            • <span class="${e.action?.includes('BUY')?(e.side==='no'?'no':'yes'):e.action?.includes('SELL')?'gold':'muted'}">${esc(e.state||e.action)}</span></p>
-          <p data-live-money>${money(e.total)} total • leftover ${e.waiting_for?'—':pct(e.net_edge)}</p>
-          <p class="muted" data-live-wait>${esc(e.waiting_for||e.position||'FLAT')}</p>
-        </div>`;
-      }).join('');
-    }
+    function ownLine(e){ return (e.position && e.position!=='FLAT') ? `Owns ${e.position}` : 'Owns nothing'; }
     function upsertRoster(el, agents, empty){
-      if(!el)return;
-      const ids=(agents||[]).map(e=>`${e.name}:${e.kind}:${e.deployed}`).join('|');
-      if(el.dataset.ids!==ids){
-        el.dataset.ids=ids;
-        el.innerHTML=renderRosterCards(agents)||`<span class="muted">${empty}</span>`;
-        return;
-      }
-      (agents||[]).forEach(e=>{
-        const card=el.querySelector(`[data-agent="${e.name}"]`);
-        if(!card)return;
-        card.classList.toggle('selected', selectedAgent===e.name);
+      if(!el) return;
+      el.innerHTML=(agents||[]).map(e=>{
         const kind=(latestState?.agent_kinds||[]).find(k=>k.kind===e.kind);
-        const job=card.querySelector('[data-job]');
-        if(job)job.textContent=kind?.title||e.kind;
-        const line=card.querySelector('[data-live-line]');
-        if(line)line.innerHTML=`<b class="${e.deployed?'ok':'gold'}">${e.deployed?'DEPLOYED':'PAUSED'}</b> • <span class="${e.action?.includes('BUY')?(e.side==='no'?'no':'yes'):e.action?.includes('SELL')?'gold':'muted'}">${esc(e.state||e.action)}</span>`;
-        const cash=card.querySelector('[data-live-money]');
-        if(cash)cash.textContent=`${money(e.total)} total • leftover ${e.waiting_for?'—':pct(e.net_edge)}`;
-        const wait=card.querySelector('[data-live-wait]');
-        if(wait)wait.textContent=e.waiting_for||e.position||'FLAT';
-      });
-    }
-    function patchAgentLive(s){
-      if(!selectedAgent || $('agentDetail')?.dataset.agent!==selectedAgent)return;
-      const live=(s?.strategies||[]).find(x=>x.name===selectedAgent);
-      if(!live)return;
-      const edge=live.net_edge, need=agentDossier?.threshold ?? live.threshold;
-      const fill=Math.max(0,Math.min(100,100*(edge||0)/Math.max(.001,need||.01)));
-      const set=(id,html,text)=>{const n=$(id);if(!n)return;if(html!=null)n.innerHTML=html;else n.textContent=text;};
-      set('agentLiveCash',null,`${money(live.total)} / ${money(live.cash)} / ${money(live.bank)}`);
-      set('agentLiveState',null,live.state||live.action||'—');
-      set('agentLivePosition',null,live.position||'FLAT');
-      set('agentLiveSize',null,money(live.suggested_size));
-      set('agentLiveWait',null,live.waiting_for||live.reason||'');
-      const bar=$('agentLiveBar'); if(bar)bar.style.width=`${live.waiting_for?0:fill}%`;
-      const leftover=$('agentLiveLeftover');
-      if(leftover)leftover.textContent=live.waiting_for
-        ? 'This bot is waiting for its job window. Leftover shows when that job is open. Waiting is not a loss.'
-        : `Leftover executable edge ${pct(edge)} versus required ${pct(need)}.`;
-      const budget=$(`budget-${selectedAgent}`);
-      if(budget && document.activeElement!==budget && live.allocated_capital!=null)
-        budget.value=Number(live.allocated_capital).toFixed(2);
-      const edgeIn=$(`edge-${selectedAgent}`);
-      if(edgeIn && document.activeElement!==edgeIn && live.threshold!=null)
-        edgeIn.value=(100*live.threshold).toFixed(1);
-    }
-
-    async function openAgent(name){
-      const same=selectedAgent===name && $('agentDetail')?.dataset.agent===name;
-      selectedAgent=name;
-      document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));
-      document.querySelectorAll('.tabs button')[1]?.classList.add('on');
-      ['live','agents','morning','history'].forEach(x=>$(x).hidden=x!=='agents');
-      if(same){patchAgentLive(latestState);return;}
-      await loadAgent(name,false);
-    }
-
-    async function loadAgent(name, force){
-      const already=$('agentDetail')?.dataset.agent===name && $('agentDetail')?.dataset.ready==='1';
-      if(already && !force){patchAgentLive(latestState);return;}
-      if(!already && $('agentDetail')?.dataset.agent!==name)
-        $('agentDetail').innerHTML='<h3>Loading '+esc(name)+'…</h3>';
-      const d=await fetch('/api/agents/'+encodeURIComponent(name)).then(r=>r.json());
-      if(d.detail){$('agentDetail').innerHTML=`<p class="bad">${esc(d.detail)}</p>`;return;}
-      agentDossier=d;
-      const g=d.guide||{}, live=(latestState?.strategies||[]).find(x=>x.name===name)||{};
-      const edge=live.net_edge, need=d.threshold, fill=Math.max(0,Math.min(100,100*(edge||0)/Math.max(.001,need)));
-      $('agentDetail').dataset.agent=name;
-      $('agentDetail').dataset.ready='1';
-      $('agentDetail').innerHTML=`
-        <div class="grid" style="margin:0">
-          <div class="wide">
-            <h3 id="agentLiveTitle">${esc(d.name)} • ${esc(g.title||d.kind)}</h3>
-            <p class="guide">${esc(g.summary||'')}</p>
-            <div class="trade-controls" style="margin:12px 0">
-              <b id="agentLiveDeployed" class="${d.deployed?'ok':'gold'}">${d.deployed?'DEPLOYED':'PAUSED'}</b>
-              <button id="agentLiveDeployBtn" onclick="event.stopPropagation();agentControl('${esc(d.name)}','${d.deployed?'pause':'deploy'}')">${d.deployed?'PAUSE':'DEPLOY'}</button>
-              <label class="muted">Allocated $ <input id="budget-${esc(d.name)}" type="number" min="1" max="10000" value="${Number(d.allocated_capital).toFixed(2)}"></label>
-              <button onclick="agentControl('${esc(d.name)}','budget')">SET ALLOCATED</button>
-              <label class="muted">Add $ <input id="addcash-${esc(d.name)}" type="number" min="1" max="10000" step="1" value="20"></label>
-              <button onclick="agentControl('${esc(d.name)}','add_cash')">ADD CASH</button>
-              <label class="muted">Min edge % <input id="edge-${esc(d.name)}" type="number" min=".5" max="20" step=".5" value="${(100*d.threshold).toFixed(1)}"></label>
-              <button onclick="agentControl('${esc(d.name)}','threshold')">SET EDGE</button>
-              <button onclick="agentControl('${esc(d.name)}','retire')">RETIRE</button>
-            </div>
-            <div class="trade-controls" style="margin:0 0 12px">
-              <span class="muted">Job</span>
-              <button onclick="event.stopPropagation();assignJob('${esc(d.name)}','trend-confirmed')">Direction · 6m</button>
-              <button onclick="event.stopPropagation();assignJob('${esc(d.name)}','hybrid-balanced')">Both agree · 4m</button>
-              <button onclick="event.stopPropagation();assignJob('${esc(d.name)}','settlement-careful')">Late closer · 3m</button>
-            </div>
-            <div class="statgrid">
-              <div class="stat"><span>Total / cash / bank</span><b id="agentLiveCash">${money(live.total)} / ${money(d.cash)} / ${money(d.bank)}</b></div>
-              <div class="stat"><span>Lifecycle</span><b id="agentLiveState">${esc(d.state||d.action)}</b></div>
-              <div class="stat"><span>Position</span><b id="agentLivePosition">${esc(live.position||'FLAT')}</b></div>
-              <div class="stat"><span>Next size</span><b id="agentLiveSize">${money(d.suggested_size)}</b></div>
-              <div class="stat"><span>Closed P&L</span><b class="${pnlClass(d.stats.net_pnl)}">${signedMoney(d.stats.net_pnl)}</b></div>
-              <div class="stat"><span>Wins / losses</span><b>${d.stats.wins||0} / ${d.stats.losses||0}</b></div>
-            </div>
-            <p class="muted" style="margin-top:10px" id="agentLiveWait">${esc(live.waiting_for||d.reason)}</p>
-            <div class="bar"><i id="agentLiveBar" style="width:${live.waiting_for?0:fill}%"></i></div>
-            <p class="muted" id="agentLiveLeftover">${live.waiting_for
-              ? 'This bot is waiting for its job window. Leftover shows when that job is open. Waiting is not a loss.'
-              : `Leftover executable edge ${pct(edge)} versus required ${pct(need)}.`}</p>
-            <details>
-              <summary class="helpbtn" style="display:inline-block">Advanced policy controls</summary>
-              <div class="builder-grid">${(d.policy_fields||[]).map(f=>`<div class="field">
-                <label><b>${esc(f.label)}</b><span>${esc(f.unit)}</span></label>
-                <input id="detail-policy-${esc(f.id)}" type="number" min="${policyValue(f,f.min)}"
-                  max="${policyValue(f,f.max)}" step="${policyValue(f,f.step)}"
-                  value="${policyValue(f,d.policy[f.id])}">
-                <p>${esc(f.meaning)}</p></div>`).join('')}</div>
-              <button class="helpbtn" style="margin-top:10px" onclick="saveAgentPolicy('${esc(d.name)}')">SAVE POLICY</button>
-            </details>
+        const label=e.display_name||pretty(e.name);
+        return `<div class="agent-card ${selectedAgent===e.name?'selected':''}" onclick="openAgent('${esc(e.name)}')">
+          <h4>${esc(label)}</h4>
+          <div class="muted">${esc(kind?.title||pretty(e.kind))}</div>
+          <p><b class="${e.deployed?'ok':'gold'}">${e.deployed?'DEPLOYED':'PAUSED'}</b> · ${esc(e.action||'—')}</p>
+          <p>${money(e.total||e.cash)} · P&amp;L <span class="${pnlClass(e.pnl||0)}">${signedMoney(e.pnl||0)}</span> · ${e.trades||0} trades</p>
+          <p>${ownLine(e)}</p>
+          <p class="muted">${esc(e.reason||e.waiting_for||'')}</p>
+          <div class="card-actions">
+            <button onclick="event.stopPropagation(); agentControl('${esc(e.name)}','${e.deployed?'pause':'deploy'}')">${e.deployed?'Pause':'Deploy'}</button>
+            <button onclick="event.stopPropagation(); openAgent('${esc(e.name)}')">Inspect</button>
           </div>
-          <div class="side guide">
-            <h3>What this agent does</h3>
-            <ul>${(g.does||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
-            <h3>Buys when</h3>
-            <ul>${(g.buy_when||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
-            <h3>Skips when</h3>
-            <ul>${(g.skip_when||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
-          </div>
-          <div class="half guide">
-            <h3>Knobs you can change</h3>
-            <ul>${(d.knobs||[]).filter(k=>k.control).map(k=>`<li><b>${esc(k.label)}</b> — ${esc(k.meaning)}</li>`).join('')}</ul>
-            <h3>Signals you are watching</h3>
-            <ul>${(d.knobs||[]).filter(k=>!k.control).map(k=>`<li><b>${esc(k.label)}</b> — ${esc(k.meaning)}</li>`).join('')}</ul>
-          </div>
-          <div class="half guide">
-            <h3>Shared buy triggers</h3>
-            <ul>${(d.triggers?.buy||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
-            <h3>Shared exit triggers</h3>
-            <ul>${(d.triggers?.sell||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
-          </div>
-          <div class="half"><h3>Equity</h3><div class="chart"><canvas id="agentEquityChart"></canvas></div></div>
-          <div class="half"><h3>Leftover edge vs required leftover</h3><div class="chart"><canvas id="agentEdgeChart"></canvas></div></div>
-          <div class="half"><h3>Closed-trade breakdown</h3><div class="scroll"><table><thead><tr><th>Slice</th><th>Bucket</th><th>N</th><th>Net P&L</th></tr></thead><tbody>
-            ${Object.entries(d.breakdowns||{}).flatMap(([dim,rows])=>rows.map(r=>`<tr><td>${esc(dim)}</td><td>${esc(r.bucket)}</td><td>${r.n}</td><td class="${pnlClass(r.net_pnl)}">${signedMoney(r.net_pnl)}</td></tr>`)).join('')||'<tr><td colspan="4" class="muted">No closed trades yet</td></tr>'}
-          </tbody></table></div></div>
-          <div class="half"><h3>Fills</h3><div class="scroll" id="agentFills">${
-            (d.fills||[]).slice().reverse().map(f=>`<div class="activity" style="grid-template-columns:80px 70px 1fr"><span class="mono">${new Date(f.fill_ts*1000).toLocaleTimeString()}</span><span class="${f.side==='yes'?'yes':'no'}">${esc((f.action||'buy').toUpperCase())} ${esc(f.side.toUpperCase())}</span><span>${num(f.contracts,2)} @ ${pct(f.price)} • fee ${money(f.fee)} • ${esc(f.market_ticker||'')}</span></div>`).join('')||'<span class="muted">No fills</span>'
-          }</div></div>
-          <div class="full"><h3>Decisions</h3><div class="scroll">${
-            (d.decisions||[]).slice().reverse().map(x=>`<div class="activity"><span class="mono">${new Date(x.ts*1000).toLocaleTimeString()}</span><span class="${x.action==='HOLD'?'muted':(x.side==='yes'?'yes':'no')}">${esc(x.action)}</span><span>${pct(x.net_edge)}</span><span>${esc(x.reason)}</span></div>`).join('')||'<span class="muted">No decisions yet</span>'
-          }</div></div>
-          <div class="full"><h3>Closed trades</h3><div class="scroll"><table><thead><tr><th>When</th><th>Market</th><th>Side</th><th>Type</th><th>Contracts</th><th>P&L</th><th>Fees</th></tr></thead><tbody>${
-            (d.closed_trades||[]).slice().reverse().map(t=>`<tr><td>${new Date(t.close_ts*1000).toLocaleString()}</td><td class="mono">${esc(t.market_ticker)}</td><td class="${t.side==='yes'?'yes':'no'}">${esc(t.side)}</td><td>${esc(t.close_type)}</td><td>${num(t.contracts)}</td><td class="${pnlClass(t.pnl)}">${signedMoney(t.pnl)}</td><td>${money(t.fees)}</td></tr>`).join('')||'<tr><td colspan="7" class="muted">No closed trades</td></tr>'
-          }</tbody></table></div></div>
         </div>`;
-      drawAgentCharts(d);
+      }).join('')||`<span class="muted">${empty}</span>`;
     }
-
-    function drawAgentCharts(d){
-      const eq=d.equity_curve||[];
-      const dec=d.decisions||[];
-      const eqOpts={...common};
-      if(agentEquityChart)agentEquityChart.destroy();
-      if(agentEdgeChart)agentEdgeChart.destroy();
-      const eqCanvas=$('agentEquityChart'), edgeCanvas=$('agentEdgeChart');
-      if(eqCanvas){
-        agentEquityChart=new Chart(eqCanvas,{type:'line',data:{labels:eq.map(p=>new Date(p.ts*1000).toLocaleTimeString()),
-          datasets:[{label:'Equity',data:eq.map(p=>p.equity),borderColor:'#2dd4bf',pointRadius:0,borderWidth:2},
-                    {label:'Cash',data:eq.map(p=>p.cash),borderColor:'#fbbf24',pointRadius:0,borderDash:[4,4]}]},options:eqOpts});
-      }
-      if(edgeCanvas){
-        agentEdgeChart=new Chart(edgeCanvas,{type:'line',data:{labels:dec.map(p=>new Date(p.ts*1000).toLocaleTimeString()),
-          datasets:[{label:'Leftover edge',data:dec.map(p=>p.net_edge),borderColor:'#22f0c8',pointRadius:0,borderWidth:2},
-                    {label:'Min edge',data:dec.map(()=>d.threshold),borderColor:'#fb7185',pointRadius:0,borderDash:[6,4]}]},
-          options:{...common,scales:{...common.scales,y:{grid:{color:'#202c42'},ticks:{color:'#8291aa',callback:v=>(v*100).toFixed(1)+'%'}}}}});
-      }
-    }
-
-    function policyValue(field,value){
-      return field.unit==='percent' ? Number(value)*100 : Number(value);
-    }
-
-    function renderPolicyBuilder(){
-      const fields=latestState?.catalog?.policy_fields||[];
-      $('policyFields').innerHTML=fields.map(f=>`<div class="field">
-        <label><b>${esc(f.label)}</b><span>${esc(f.unit)}</span></label>
-        <input id="policy-${esc(f.id)}" type="number" min="${policyValue(f,f.min)}" max="${policyValue(f,f.max)}"
-          step="${policyValue(f,f.step)}" oninput="updateTriggerPreview()">
-        <p>${esc(f.meaning)}</p>
+    function renderTemplates(catalog){
+      const templates=(catalog&&catalog.templates)||catalogCache.templates||[];
+      if(!templates.length || !$('templateRoster')) return;
+      $('templateRoster').innerHTML=templates.map(t=>`<div class="agent-card ${selectedTemplateId===t.id?'selected':''}" onclick="pickTemplate('${esc(t.id)}')">
+        <h4>${esc(t.title)}${t.recommended?' · default':''} ${tip(t.why||t.tagline)}</h4>
+        <p>${esc(t.tagline||t.why)}</p>
+        <p class="muted">${esc(t.when)} · ${esc(t.risk)} risk · min edge ${(100*t.threshold).toFixed(1)}%</p>
+        <div class="card-actions"><button class="buy-yes" onclick="event.stopPropagation(); pickTemplate('${esc(t.id)}'); createAgent(true)">Use template</button></div>
       </div>`).join('');
     }
-
-    function selectedTemplate(){
-      return (latestState?.catalog?.templates||[]).find(t=>t.id===selectedTemplateId);
-    }
-
-    function renderTemplates(){
-      $('templateRoster').innerHTML=(latestState?.catalog?.templates||[]).map(t=>`
-        <div class="agent-card ${selectedTemplateId===t.id?'selected':''}" onclick="selectTemplate('${esc(t.id)}')">
-          <h4>${esc(t.title)} ${t.recommended?'<span class="pill">RECOMMENDED</span>':''}</h4>
-          <div class="gold">${esc(t.tagline)}</div>
-          <p>${esc(t.why)}</p>
-          <p class="muted">Job: <b>${esc(t.title)}</b> • ${esc(t.cadence)}</p>
-          <p class="muted">${esc(t.recommended_for)}</p>
-        </div>`).join('');
-    }
-
-    function selectTemplate(id){
-      const template=(latestState?.catalog?.templates||[]).find(t=>t.id===id);
-      if(!template)return;
+    function pickTemplate(id){
       selectedTemplateId=id;
-      $('agentEdge').value=(100*template.threshold).toFixed(1);
-      const policy=template.policy;
-      const fields=latestState?.catalog?.policy_fields||[];
-      fields.forEach(f=>{const input=$(`policy-${f.id}`);if(input)input.value=policyValue(f,policy[f.id]);});
-      renderTemplates();
-      updateTriggerPreview();
+      const t=(catalogCache.templates||latestState?.catalog?.templates||[]).find(x=>x.id===id);
+      if(t){ $('agentBudget').value=t.default_budget||100; $('agentEdge').value=(100*t.threshold).toFixed(1); }
+      renderTemplates(catalogCache);
     }
-
-    function readPolicyForm(){
-      const result={};
-      (latestState?.catalog?.policy_fields||[]).forEach(f=>{
-        const input=$(`policy-${f.id}`);
-        if(input)result[f.id]=f.unit==='percent'?Number(input.value)/100:Number(input.value);
-      });
-      return result;
-    }
-
-    function toggleAdvanced(){
-      $('advancedBuilder').hidden=!$('advancedBuilder').hidden;
-    }
-
-    function updateTriggerPreview(){
-      const template=selectedTemplate()||{};
-      const kind=template.kind;
-      const guide=(latestState?.catalog?.kinds||[]).find(k=>k.kind===kind)||{};
-      const policy=readPolicyForm(), edge=Number($('agentEdge')?.value||3);
-      const effectiveStart=Math.min(policy.entry_start_seconds||0,guide.entry_window_seconds||900);
-      const bucketName=template.title||{settlement:'Late closer',trend:'Direction',hybrid:'Both agree'}[template.bucket]||template.bucket;
-      $('triggerPreview').innerHTML=`<b>${esc(template.title||guide.title||kind||'Bot')}</b> acts only on <b>${esc(bucketName)}</b>, from
-        <b>${num(effectiveStart/60,1)}m</b> until <b>${num(policy.entry_stop_seconds||0,0)}s</b>
-        remaining. It buys only if leftover ≥ <b>${edge.toFixed(1)}%</b> after fees.
-        <br><span class="muted">${esc(template.why||guide.summary||'')}</span>`;
-    }
-
-    const tutorialPages=[
-      {title:'Welcome to fyfteen labs',body:`<p>This is a paper sandbox for Kalshi's recurring 15-minute Bitcoin market. Market data is real; every balance, fill, and position is simulated.</p><p>A contract pays <b>$1 if correct</b> and <b>$0 if wrong</b>. Buying YES at 40¢ risks 40¢ to receive $1 on a YES result.</p>`},
-      {title:'What an opportunity is',body:`<p>An opportunity is leftover executable edge: <b>forecast − executable ask − fee − safety − uncertainty</b>.</p><p>If leftover is not positive, wait. A waiting bot is not losing 100%. A guess, a last trade, or a midpoint is not an opportunity.</p>`},
-      {title:'Three named buckets',body:`<p><b>Settlement misprice</b> — official 60-reading BRTI average in the last 3 minutes.</p><p><b>Confirmed short trend</b> — 5 / 30 / 60-second direction in the last 6 minutes, projected only a little.</p><p><b>Agreement</b> — both of those forecasts pick the same side in the last 4 minutes. Each bot watches one bucket.</p>`},
-      {title:'Talk to 15',body:`<p>The cyan bubble at the bottom is voice-only. Tap it, speak, and FYFTEN answers in the popup. Tap outside to close; tap again to see the history.</p><p>It configures the fleet. It does not invent a forecast or place a live order.</p>`},
-      {title:'A responsible workflow',body:`<ol><li>Create the bot paused.</li><li>Watch which opportunity bucket it waits for.</li><li>Deploy a small paper budget.</li><li>Inspect decisions, not only fills.</li><li>Compare net P&L, drawdown, fees, and sample size across many markets.</li></ol><p>This sandbox tests whether a thesis has evidence. It does not promise passive income.</p>`},
-    ];
-    let tutorialIndex=0;
-    function openTutorial(){tutorialIndex=0;renderTutorial();$('tutorialDialog').showModal();}
-    function closeTutorial(){localStorage.setItem('btc15-tutorial-seen','1');$('tutorialDialog').close();}
-    function tutorialMove(delta){
-      tutorialIndex=Math.max(0,Math.min(tutorialPages.length-1,tutorialIndex+delta));
-      if(delta>0&&tutorialIndex===tutorialPages.length-1)localStorage.setItem('btc15-tutorial-seen','1');
-      renderTutorial();
-    }
-    function renderTutorial(){
-      const page=tutorialPages[tutorialIndex];
-      $('tutorialStep').innerHTML=`<small>Quick start</small><h2>${esc(page.title)}</h2>${page.body}`;
-      $('tutorialProgress').textContent=`${tutorialIndex+1} / ${tutorialPages.length}`;
-    }
-
-    async function manualOrder(action,side){
-      const amount=Number($('manualAmount').value||1);
-      $('manualStatus').textContent='Queuing local paper order…';
-      const response=await fetch('/api/manual-paper-order',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action,side,amount})});
-      const data=await response.json();
-      $('manualStatus').textContent=response.ok
-        ?`${data.message}. PAPER ONLY — no real order was sent.`
-        :`Blocked: ${data.detail||'Unknown error'}`;
-    }
-
     async function createAgent(deployed){
-      const template=selectedTemplate();
-      if(!template){$('agentStatus').textContent='Choose a template first.';return;}
-      const payload={name:$('agentName').value.trim().toLowerCase(),
-        template_id:template.id,kind:template.kind,
-        budget:Number($('agentBudget').value),threshold:Number($('agentEdge').value)/100,
-        deployed,policy:readPolicyForm()};
-      $('agentStatus').textContent='Creating isolated paper account…';
-      const response=await fetch('/api/agents',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify(payload)});
+      let name=$('agentName').value.trim();
+      if(!name){
+        const t=(catalogCache.templates||[]).find(x=>x.id===selectedTemplateId);
+        name=(t?.title||'bot').toLowerCase().replace(/\s+/g,'-')+'-'+Math.floor(Math.random()*90+10);
+        $('agentName').value=name;
+      }
+      const body={name, template_id:selectedTemplateId, budget:Number($('agentBudget').value), threshold:Number($('agentEdge').value)/100, deployed};
+      const response=await api('/api/agents',{method:'POST', body:JSON.stringify(body)});
       const data=await response.json();
-      $('agentStatus').textContent=response.ok
-        ?`${data.name} created ${data.deployed?'and deployed':'in paused state'}.`
-        :`Blocked: ${data.detail||'Unknown error'}`;
-      if(response.ok){
-        $('agentName').value='';
-        if(data.name) openAgent(data.name);
-      }
+      $('agentStatus').textContent=response.ok?`Created ${pretty(data.name)}. ${deployed?'Deployed.':'Paused.'}`:(data.detail||'Could not create');
+      if(response.ok) openAgent(data.name);
     }
-
-    async function agentControl(name,action){
-      if(action==='retire'&&!confirm(`Cash out and retire ${name}? Historical results remain.`))return;
-      const payload={action,flatten:action==='retire'};
-      if(action==='budget')payload.budget=Number($(`budget-${name}`).value);
-      if(action==='add_cash')payload.delta=Number($(`addcash-${name}`).value||20);
-      if(action==='threshold')payload.threshold=Number($(`edge-${name}`).value)/100;
-      $('agentStatus').textContent=`Applying ${action} to ${name}…`;
-      const response=await fetch(`/api/agents/${encodeURIComponent(name)}/control`,{
-        method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    async function manualOrder(action, side){
+      const amount=Number($('manualAmount').value);
+      const response=await api('/api/manual-paper-order',{method:'POST', body:JSON.stringify({action, side, amount})});
       const data=await response.json();
-      if(!response.ok){
-        $('agentStatus').textContent=`Blocked: ${data.detail||'Unknown error'}`;
-        return;
-      }
-      if(action==='retire'){
-        selectedAgent=null;
-        delete pendingControls[name];
-        $('agentDetail').dataset.ready='';
-        $('agentDetail').dataset.agent='';
-        $('agentDetail').innerHTML='<h3>Agent retired</h3><p class="muted">Historical analytics remain on the Analytics tab.</p>';
-        $('agentStatus').textContent=`${name} retired.`;
-        return;
-      }
-      applyControlToState(name, data);
-      if(data.threshold!=null && $(`edge-${name}`))$('edge-'+name).value=(100*data.threshold).toFixed(1);
-      if(data.allocated_capital!=null && $(`budget-${name}`))$('budget-'+name).value=Number(data.allocated_capital).toFixed(2);
-      if($('agentLiveDeployed') && data.status){
-        const on=data.status==='deployed';
-        $('agentLiveDeployed').className=on?'ok':'gold';
-        $('agentLiveDeployed').textContent=on?'DEPLOYED':'PAUSED';
-        if($('agentLiveDeployBtn')){
-          $('agentLiveDeployBtn').textContent=on?'PAUSE':'DEPLOY';
-          $('agentLiveDeployBtn').setAttribute('onclick',`event.stopPropagation();agentControl('${name}','${on?'pause':'deploy'}')`);
-        }
-      }
-      upsertRoster($('agentRoster'), latestState.strategies, 'No agents yet. Create one below or talk to 15.');
-      upsertRoster($('liveRoster'), (latestState.strategies||[]).filter(e=>e.deployed), 'No agents deployed. Open Fleet to create one.');
-      patchAgentLive(latestState);
-      const cashNote=data.cash!=null?` Cash ${money(data.cash)}, allocated ${money(data.allocated_capital)}.`:'';
-      $('agentStatus').textContent=`${name}: ${action==='add_cash'?'cash added':action} applied.${cashNote}`;
+      $('manualStatus').textContent=response.ok?`${action.toUpperCase()} ${side.toUpperCase()} queued.`:(data.detail||'Blocked');
     }
-
+    async function openAgent(name){
+      selectedAgent=name;
+      view('fleet', document.querySelectorAll('.tabs button')[1]);
+      const d=await api('/api/agents/'+encodeURIComponent(name)).then(r=>r.json());
+      agentDossier=d;
+      const live=(latestState?.strategies||[]).find(x=>x.name===name)||{};
+      const g=d.guide||{};
+      const why=(d.why_not?.counts||[]).map(r=>`<div class="stat"><span>${esc(r.label)}</span><b>${r.n}</b></div>`).join('')||'<p class="muted">No HOLD/WAIT decisions in the last 15 minutes.</p>';
+      const holdings=(d.holdings||[]).map(h=>`<tr><td class="mono">${esc(h.market_ticker)}</td><td class="${h.side==='yes'?'yes':'no'}">${esc(h.side)}</td><td>${num(h.contracts)}</td><td>${money(h.cost)}</td><td>${h.mark==null?'—':money(h.mark)}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">No open contracts</td></tr>';
+      const field=(f)=>`<div class="field"><label><b>${esc(f.label)}</b> ${tip(f.meaning||'')}</label><input id="p-${esc(f.id)}" type="number" step="${f.step||1}" value="${f.unit==='percent'?Number(d.policy[f.id])*100:d.policy[f.id]}"></div>`;
+      const beginner=(d.policy_fields||[]).filter(f=>f.beginner).map(field).join('');
+      const advanced=(d.policy_fields||[]).filter(f=>!f.beginner).map(field).join('');
+      const templates=(catalogCache.templates||[]).map(t=>`<option value="${esc(t.id)}" ${t.id===d.kind?'selected':''}>${esc(t.title)}</option>`).join('');
+      $('agentDetail').innerHTML=`
+        <div class="h3row"><h3>${esc(pretty(d.name))} · ${esc(g.title)}</h3>${tip(g.summary||'')}</div>
+        <p>${esc(g.summary||'')}</p>
+        <div class="trade-controls">
+          <b class="${d.deployed?'ok':'gold'}">${d.deployed?'DEPLOYED':'PAUSED'}</b>
+          <button onclick="agentControl('${esc(d.name)}','${d.deployed?'pause':'deploy'}')">${d.deployed?'PAUSE':'DEPLOY'}</button>
+          <label>Allocated $ <input id="budget-${esc(d.name)}" type="number" value="${Number(d.allocated_capital).toFixed(2)}"></label>
+          <button onclick="agentControl('${esc(d.name)}','budget')">SET</button>
+          <label>Add $ <input id="addcash-${esc(d.name)}" type="number" value="50"></label>
+          <button onclick="agentControl('${esc(d.name)}','add_cash')">ADD CASH</button>
+          <label>Min edge % ${tip('How cheap the contract must be versus the model after fees.')}<input id="edge-${esc(d.name)}" type="number" value="${(100*d.threshold).toFixed(1)}"></label>
+          <button onclick="agentControl('${esc(d.name)}','threshold')">SET EDGE</button>
+          <select id="job-${esc(d.name)}">${templates}</select>
+          <button onclick="switchTemplate('${esc(d.name)}')">SWITCH TEMPLATE</button>
+          <button onclick="agentControl('${esc(d.name)}','retire')">RETIRE</button>
+        </div>
+        <div class="statgrid" style="margin-top:12px">
+          <div class="stat"><span>Cash / equity</span><b>${money(d.cash)} / ${money(live.total||d.cash)}</b></div>
+          <div class="stat"><span>Owns</span><b id="agentLivePosition">${esc(d.position||'FLAT')}</b></div>
+          <div class="stat"><span>Closed P&L</span><b class="${pnlClass(d.stats?.net_pnl)}">${signedMoney(d.stats?.net_pnl)}</b></div>
+          <div class="stat"><span>Trades</span><b>${d.stats?.trades||0}</b></div>
+        </div>
+        <p class="muted" id="agentLiveWait">${esc(d.reason)}</p>
+        <div class="h3row" style="margin-top:16px"><h3>What it owns</h3>${tip('Open paper contracts, marked at the live bid after fees.')}</div>
+        <div class="scroll"><table><thead><tr><th>Market</th><th>Side</th><th>Contracts</th><th>Cost</th><th>Mark</th></tr></thead><tbody id="agentLiveHoldings">${holdings}</tbody></table></div>
+        <div class="h3row" style="margin-top:16px"><h3>Why didn't it trade?</h3>${tip('Counts of HOLD/WAIT reasons in the last 15 minutes.')}</div>
+        <div class="statgrid">${why}</div>
+        <div class="h3row" style="margin-top:16px"><h3>Beginner settings</h3></div>
+        <div class="builder-grid">${beginner}</div>
+        <button class="helpbtn" style="margin-top:8px" onclick="saveAgentPolicy('${esc(d.name)}')">SAVE SETTINGS</button>
+        <details><summary>Advanced settings</summary><div class="builder-grid">${advanced}</div></details>
+        <div class="wide" style="margin-top:16px"><h3>Equity this session</h3><div class="chart"><canvas id="agentEquityChart"></canvas></div></div>
+        <h3 style="margin-top:16px">Trades</h3>
+        <div class="scroll"><table><thead><tr><th>When</th><th>Market</th><th>Side</th><th>Type</th><th>Contracts</th><th>P&L</th><th>Fees</th></tr></thead><tbody>
+          ${(d.closed_trades||[]).map(t=>`<tr><td>${new Date(t.close_ts*1000).toLocaleString()}</td><td class="mono">${esc(t.market_ticker)}</td><td>${esc(t.side)}</td><td>${esc(t.close_type)}</td><td>${num(t.contracts)}</td><td class="${pnlClass(t.pnl)}">${signedMoney(t.pnl)}</td><td>${money(t.fees)}</td></tr>`).join('')||'<tr><td colspan="7" class="muted">No closed trades</td></tr>'}
+        </tbody></table></div>`;
+      drawAgentCharts(d);
+    }
+    function patchAgentLive(s){
+      const live=(s.strategies||[]).find(x=>x.name===selectedAgent);
+      if(!live) return;
+      if($('agentLivePosition')) $('agentLivePosition').textContent=live.position||'FLAT';
+      if($('agentLiveWait')) $('agentLiveWait').textContent=live.reason||live.waiting_for||'';
+    }
+    function drawAgentCharts(d){
+      const eq=d.equity_curve||[];
+      if(agentEquityChart) agentEquityChart.destroy();
+      const canvas=$('agentEquityChart');
+      if(!canvas) return;
+      const trades=d.closed_trades||[];
+      agentEquityChart=new Chart(canvas,{type:'line',data:{
+        labels:eq.map(p=>new Date(p.ts*1000).toLocaleTimeString()),
+        datasets:[
+          {label:'Equity',data:eq.map(p=>p.equity),borderColor:'#2dd4bf',pointRadius:0,borderWidth:2,tension:.15},
+          {label:'Closed P&L marks',data:eq.map(p=>{
+            const hit=trades.find(t=>Math.abs(t.close_ts-p.ts)<2);
+            return hit?p.equity:null;
+          }),pointRadius:4,showLine:false,borderColor:'#fbbf24',backgroundColor:'#fbbf24'}
+        ]},options:axisOpts('money')});
+    }
+    async function switchTemplate(name){
+      const template_id=$(`job-${name}`).value;
+      const response=await api(`/api/agents/${encodeURIComponent(name)}/control`,{method:'POST', body:JSON.stringify({action:'job', template_id})});
+      const data=await response.json();
+      if(!response.ok) alert(data.detail||'Blocked');
+      openAgent(name);
+    }
+    async function agentControl(name, action){
+      const body={action};
+      if(action==='budget') body.budget=Number($(`budget-${name}`).value);
+      if(action==='add_cash') body.delta=Number($(`addcash-${name}`).value);
+      if(action==='threshold') body.threshold=Number($(`edge-${name}`).value)/100;
+      if(action==='retire') body.flatten=true;
+      const response=await api(`/api/agents/${encodeURIComponent(name)}/control`,{method:'POST', body:JSON.stringify(body)});
+      const data=await response.json();
+      if(!response.ok){ alert(data.detail||'Blocked'); return; }
+      if(action==='retire'){ selectedAgent=null; $('agentDetail').innerHTML='<p class="muted">Retired.</p>'; return; }
+      openAgent(name);
+    }
     async function saveAgentPolicy(name){
+      const fields=agentDossier?.policy_fields||[];
       const policy={};
-      (agentDossier?.policy_fields||[]).forEach(f=>{
-        const input=$(`detail-policy-${f.id}`);
-        if(input)policy[f.id]=f.unit==='percent'?Number(input.value)/100:Number(input.value);
+      fields.forEach(f=>{
+        const el=$(`p-${f.id}`); if(!el) return;
+        policy[f.id]=f.unit==='percent'?Number(el.value)/100:Number(el.value);
       });
-      $('agentStatus').textContent=`Saving ${name} policy…`;
-      const response=await fetch(`/api/agents/${encodeURIComponent(name)}/control`,{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'policy',policy})});
-      const data=await response.json();
-      $('agentStatus').textContent=response.ok?`${name}: policy saved.`:`Blocked: ${data.detail||'Invalid policy'}`;
-      if(response.ok && agentDossier){
-        agentDossier.policy=policy;
-        applyControlToState(name, data);
-      }
+      await api(`/api/agents/${encodeURIComponent(name)}/control`,{method:'POST', body:JSON.stringify({action:'policy', policy})});
+      openAgent(name);
     }
-
-    async function view(id,btn){
-      ['live','agents','morning','history'].forEach(x=>$(x).hidden=x!==id);
-      document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));btn.classList.add('on');
-      if(id==='agents' && selectedAgent) patchAgentLive(latestState);
-      if(id==='morning'){
-        const a=await fetch('/api/analytics').then(r=>r.json());
-        $('analytics').innerHTML=a.strategies.map(x=>`<tr><td>${esc(x.strategy)}</td><td>${money(x.starting_balance)} / ${money(x.total_equity)}</td><td>${money(x.bank)}</td><td>${x.trades}</td><td>${x.wins||0}/${x.losses||0}</td><td>${pct(x.settled?x.wins/x.settled:0)}</td><td>${signedMoney(x.gross_pnl)}</td><td>${money(x.fees)} / ${money(x.spread_cost)}</td><td class="${pnlClass(x.net_pnl)}">${signedMoney(x.net_pnl)}</td><td>${signedMoney(x.avg_pnl_trade)}</td><td>${money(x.max_drawdown)}</td><td>${pct(x.avg_estimated_edge)}</td><td>${x.gross_loss?(x.gross_win/x.gross_loss).toFixed(2):'—'}</td></tr>`).join('');
-        $('calibration').innerHTML=a.calibration.map(x=>`<tr><td>${pct(x.bucket+.05)}</td><td>${x.n}</td><td>${pct(x.actual)}</td><td>${num(x.brier,4)}</td></tr>`).join('');
-        const ms=a.model_scores||{},cal=a.calibrator||{};
-        $('modelScores').innerHTML=[['Markets',ms.markets||0],['Ensemble Brier',num(ms.ensemble_brier,4)],['Settlement Brier',num(ms.settlement_brier,4)],['Terminal Brier',num(ms.terminal_brier,4)],['Avg confidence',pct(ms.average_confidence)],['Platt calibrator',cal.active?'VALIDATED':`FALLBACK ${cal.samples||0}/${cal.minimum_samples||200}`]].map(v=>`<div class="stat"><span>${v[0]}</span><b>${esc(v[1])}</b></div>`).join('');
-        $('breakdowns').innerHTML=a.breakdowns.map(x=>`<tr><td>${esc(x.dimension)}</td><td>${esc(x.bucket)}</td><td>${x.n}</td><td class="${pnlClass(x.net_pnl)}">${signedMoney(x.net_pnl)}</td></tr>`).join('');
-        const colors=['#2dd4bf','#fb7185','#fbbf24','#60a5fa','#c084fc'];
-        equityChart.data.datasets=a.strategies.map((x,i)=>({label:x.strategy,data:x.equity_curve.map(p=>({x:p.ts,y:p.equity})),borderColor:colors[i%5],pointRadius:0,borderWidth:1}));
-        equityChart.update();
-      }
-      if(id==='history'){
-        const markets=await fetch('/api/markets').then(r=>r.json());
-        $('markets').innerHTML=markets.map(x=>`<tr style="cursor:pointer" onclick="marketDetail('${esc(x.ticker)}')"><td class="mono">${esc(x.ticker)}</td><td>${new Date(x.open_ts*1000).toLocaleString()}</td><td>${new Date(x.close_ts*1000).toLocaleString()}</td><td>${money(x.target)}</td><td>${esc(x.status)}</td><td class="${x.result==='yes'?'yes':x.result==='no'?'no':'muted'}">${esc(x.result||'pending')}</td></tr>`).join('');
-      }
+    async function charts(){
+      const rows=await api('/api/chart').then(r=>r.json()).catch(()=>[]);
+      const rev=[...rows].reverse();
+      const labels=rev.map(r=>new Date(r.ts*1000).toLocaleTimeString());
+      priceChart.data.labels=labels;
+      priceChart.data.datasets[0].data=rev.map(r=>r.brti);
+      priceChart.data.datasets[1].data=rev.map(r=>r.target);
+      priceChart.update();
+      probChart.data.labels=labels;
+      probChart.data.datasets[0].data=rev.map(r=>r.p_yes);
+      probChart.data.datasets[1].data=rev.map(r=>r.yes_ask);
+      probChart.data.datasets[2].data=rev.map(r=>r.yes_bid);
+      probChart.update();
     }
-
-    let fyftenRec=null, fyftenRecord=null, fyftenKeys={llm:false,stt:false};
-    function addFleetBubble(role,text){
-      const div=document.createElement('div');
-      div.className='bubble '+role;
-      div.textContent=text;
-      $('fleetLog').appendChild(div);
-      $('fleetLog').scrollTop=$('fleetLog').scrollHeight;
+    async function loadHistory(){
+      const a=await api('/api/analytics').then(r=>r.json());
+      $('analytics').innerHTML=(a.strategies||[]).map(x=>`<tr><td>${esc(pretty(x.strategy))}</td><td>${x.trades||0}</td><td>${x.wins||0}/${x.losses||0}</td><td>${pct(x.win_rate)}</td><td class="${pnlClass(x.net_pnl)}">${signedMoney(x.net_pnl)}</td><td>${money(x.fees)}</td><td>${signedMoney(x.avg_pnl_trade)}</td><td>${money(x.max_drawdown)}</td><td>${money(x.equity)}</td></tr>`).join('');
+      const markets=await api('/api/markets').then(r=>r.json());
+      $('markets').innerHTML=markets.map(x=>`<tr style="cursor:pointer" onclick="marketDetail('${esc(x.ticker)}')"><td class="mono">${esc(x.ticker)}</td><td>${new Date(x.open_ts*1000).toLocaleString()}</td><td>${new Date(x.close_ts*1000).toLocaleString()}</td><td>${money(x.target)}</td><td>${esc(x.status)}</td><td>${esc(x.result||'pending')}</td></tr>`).join('');
     }
-    function setFyftenStatus(text){
-      if($('fleetStatus'))$('fleetStatus').textContent=text;
-    }
-    function fyftenReadyLine(){
-      const speech=fyftenKeys.stt
-        ? `Speech ${fyftenKeys.stt_provider||'ready'}`
-        : (window.SpeechRecognition||window.webkitSpeechRecognition
-          ? 'Browser speech until you paste GROQ_API_KEY'
-          : 'Need GROQ_API_KEY');
-      const brain=fyftenKeys.llm
-        ? `LLM ${fyftenKeys.model||'ready'}`
-        : 'Local compiler until you paste FIREWORKS_API_KEY';
-      return `${speech}. ${brain}.`;
-    }
-    async function refreshFyftenKeys(){
-      try{
-        const s=await fetch('/api/fleet').then(r=>r.json());
-        fyftenKeys={llm:!!s.llm,stt:!!s.stt,model:s.model,stt_provider:s.stt_provider};
-      }catch(e){ fyftenKeys={llm:false,stt:false}; }
-    }
-    function applyFleetResult(data){
-      const result=data.result||data;
-      const name=result?.name||data.focus;
-      if(name && result && (result.cash!=null || result.allocated_capital!=null || result.kind || result.status))
-        applyControlToState(name, result);
-      if(data.focus) selectedAgent=data.focus;
-      if(latestState?.strategies){
-        upsertRoster($('agentRoster'), latestState.strategies, 'No agents yet. Create one below or talk to 15.');
-        upsertRoster($('liveRoster'), latestState.strategies.filter(e=>e.deployed), 'No agents deployed. Open Fleet to create one.');
-        patchAgentLive(latestState);
-      }
-    }
-    function toggleFyften(){
-      if(!$('fyftenRoot').classList.contains('open')){openFyften();return;}
-      if(fyftenRecord){stopFyftenRecord(true);return;}
-      talkFleet();
-    }
-    async function openFyften(){
-      $('fyftenRoot').classList.add('open');
-      await refreshFyftenKeys();
-      setFyftenStatus(fyftenReadyLine()+' Tap 15 and talk.');
-      talkFleet();
-    }
-    function closeFyften(){
-      $('fyftenRoot').classList.remove('open');
-      $('fyftenOrb')?.classList.remove('listening');
-      stopFyftenRecord(false);
-      try{fyftenRec?.stop()}catch(e){}
-    }
-    async function sendFleet(text){
-      const spoken=(text||'').trim();
-      if(!spoken)return;
-      addFleetBubble('user',spoken);
-      setFyftenStatus('Working…');
-      const response=await fetch('/api/fleet/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({text:spoken})});
-      const data=await response.json();
-      addFleetBubble('fleet',data.reply||data.detail||'No reply');
-      applyFleetResult(data);
-      setFyftenStatus(fyftenReadyLine()+' Tap 15 and talk again.');
-    }
-    function encodeWav(samples, rate){
-      const buf=new ArrayBuffer(44+samples.length*2), v=new DataView(buf);
-      const w=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
-      w(0,'RIFF');v.setUint32(4,36+samples.length*2,true);w(8,'WAVE');w(12,'fmt ');
-      v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
-      v.setUint32(24,rate,true);v.setUint32(28,rate*2,true);v.setUint16(32,2,true);
-      v.setUint16(34,16,true);w(36,'data');v.setUint32(40,samples.length*2,true);
-      let o=44;
-      for(const x of samples){const s=Math.max(-1,Math.min(1,x));v.setInt16(o,s<0?s*0x8000:s*0x7fff,true);o+=2;}
-      return new Blob([buf],{type:'audio/wav'});
-    }
-    function downsample(input, from, to){
-      if(from===to)return input;
-      const ratio=from/to, out=new Float32Array(Math.round(input.length/ratio));
-      for(let i=0;i<out.length;i++)out[i]=input[Math.min(input.length-1,Math.round(i*ratio))]||0;
-      return out;
-    }
-    function blobToB64(blob){
-      return new Promise((resolve,reject)=>{
-        const r=new FileReader();
-        r.onload=()=>resolve(String(r.result).split(',')[1]||'');
-        r.onerror=reject;
-        r.readAsDataURL(blob);
-      });
-    }
-    function talkWithBrowserSpeech(){
-      const Rec=window.SpeechRecognition||window.webkitSpeechRecognition;
-      if(!Rec){
-        setFyftenStatus('No speech key and this browser has no SpeechRecognition. Paste GROQ_API_KEY in .env and restart.');
-        return;
-      }
-      const rec=new Rec();
-      rec.lang='en-US'; rec.interimResults=false; rec.maxAlternatives=1;
-      fyftenRec=rec;
-      $('fyftenOrb')?.classList.add('listening');
-      setFyftenStatus('Listening (browser)… speak, then pause.');
-      rec.onresult=e=>{
-        const text=e.results?.[0]?.[0]?.transcript||'';
-        fyftenRec=null;
-        $('fyftenOrb')?.classList.remove('listening');
-        sendFleet(text);
-      };
-      rec.onerror=()=>{
-        fyftenRec=null;
-        $('fyftenOrb')?.classList.remove('listening');
-        setFyftenStatus('Could not hear that. Tap 15 again.');
-      };
-      rec.onend=()=>{
-        $('fyftenOrb')?.classList.remove('listening');
-      };
-      rec.start();
-    }
-    async function talkFleet(){
-      if(fyftenRecord){stopFyftenRecord(true);return;}
-      if(fyftenRec){try{fyftenRec.stop()}catch(e){} fyftenRec=null; return;}
-      await refreshFyftenKeys();
-      if(!fyftenKeys.stt){ talkWithBrowserSpeech(); return; }
-      try{
-        const stream=await navigator.mediaDevices.getUserMedia({audio:true});
-        const ctx=new AudioContext();
-        const src=ctx.createMediaStreamSource(stream);
-        const proc=ctx.createScriptProcessor(4096,1,1);
-        const parts=[];
-        proc.onaudioprocess=e=>parts.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-        src.connect(proc);proc.connect(ctx.destination);
-        fyftenRecord={stream,ctx,proc,parts,timer:setTimeout(()=>stopFyftenRecord(true),8000)};
-        $('fyftenOrb')?.classList.add('listening');
-        setFyftenStatus('Listening… tap 15 again to send.');
-      }catch(e){
-        setFyftenStatus('Microphone blocked. Allow mic access for FYFTEN.');
-      }
-    }
-    async function stopFyftenRecord(send){
-      const rec=fyftenRecord; fyftenRecord=null;
-      $('fyftenOrb')?.classList.remove('listening');
-      if(!rec)return;
-      clearTimeout(rec.timer);
-      const rate=rec.ctx.sampleRate||48000;
-      try{rec.proc.disconnect();rec.ctx.close();rec.stream.getTracks().forEach(t=>t.stop());}catch(e){}
-      if(!send)return;
-      const merged=new Float32Array(rec.parts.reduce((n,p)=>n+p.length,0));
-      let o=0; rec.parts.forEach(p=>{merged.set(p,o);o+=p.length;});
-      if(merged.length<800){setFyftenStatus('Too short. Tap 15 and talk.');return;}
-      const wav=encodeWav(downsample(merged,rate,16000),16000);
-      setFyftenStatus('Hearing you…');
-      try{
-        const clip=await blobToB64(wav);
-        const response=await fetch('/api/fyften/talk',{method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({audio_b64:clip,content_type:'audio/wav'})});
-        const data=await response.json();
-        if(!response.ok){setFyftenStatus(data.detail||'Speech backend is not keyed yet.');return;}
-        if(data.transcript) addFleetBubble('user', data.transcript);
-        addFleetBubble('fleet', data.reply||data.detail||'No reply');
-        applyFleetResult(data);
-        setFyftenStatus(fyftenReadyLine()+' Tap 15 and talk again.');
-      }catch(e){
-        setFyftenStatus('Could not reach the speech backend.');
-      }
-    }
-    async function assignJob(name,templateId){
-      const response=await fetch(`/api/agents/${encodeURIComponent(name)}/control`,{
-        method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'job',template_id:templateId})});
-      const data=await response.json();
-      $('agentStatus').textContent=response.ok
-        ?`${name} is now ${data.job||templateId}.`
-        :`Blocked: ${data.detail||'Could not change job'}`;
-      if(response.ok){
-        applyControlToState(name, data);
-        if($('agentLiveTitle') && data.job) $('agentLiveTitle').textContent=`${name} • ${data.job}`;
-        await loadAgent(name,true);
-      }
-    }
-
     async function marketDetail(ticker){
-      const d=await fetch('/api/markets/'+encodeURIComponent(ticker)).then(r=>r.json());
+      const d=await api('/api/markets/'+encodeURIComponent(ticker)).then(r=>r.json());
       $('detailTitle').textContent=ticker;
-      const m=d.market||{};
-      $('marketDetail').innerHTML=`<p>${esc(m.condition||'')}</p><div class="statgrid"><div class="stat"><span>Target</span><b>${money(m.target)}</b></div><div class="stat"><span>Official result</span><b>${esc(m.result||'pending')}</b></div><div class="stat"><span>Feature samples</span><b>${d.features.length}</b></div><div class="stat"><span>Paper fills</span><b>${d.fills.length}</b></div></div><h3 style="margin-top:20px">Paper fills</h3><div class="scroll"><table><thead><tr><th>Strategy</th><th>Side</th><th>Contracts</th><th>Price</th><th>Fee</th><th>Latency</th></tr></thead><tbody>${d.fills.map(f=>`<tr><td>${esc(f.experiment)}</td><td>${esc(f.side)}</td><td>${num(f.contracts)}</td><td>${pct(f.price)}</td><td>${money(f.fee)}</td><td>${f.latency_ms}ms</td></tr>`).join('')}</tbody></table></div>`;
+      $('marketDetail').innerHTML=`<p>${esc(d.market?.condition||'')}</p><p>Result ${esc(d.market?.result||'pending')} · fills ${d.fills.length}</p>`;
       $('marketDialog').showModal();
     }
+    function toggleFyften(){ $('fyftenRoot').classList.toggle('open'); if($('fyftenRoot').classList.contains('open')) $('fyftenInput').focus(); }
+    function closeFyften(){ $('fyftenRoot').classList.remove('open'); }
+    function sendFyften(event){ event.preventDefault(); const text=$('fyftenInput').value.trim(); $('fyftenInput').value=''; sendFleet(text); return false; }
+    async function sendFleet(text){
+      if(!text || fyftenBusy) return;
+      fyftenBusy=true;
+      const log=$('fleetLog');
+      log.innerHTML+=`<div class="bubble user">${esc(text)}</div>`;
+      $('fleetStatus').textContent='Working…';
+      try{
+        const response=await api('/api/fleet/chat',{method:'POST', body:JSON.stringify({text})});
+        const data=await response.json();
+        log.innerHTML+=`<div class="bubble fleet">${md(data.reply||data.detail||'No reply')}</div>`;
+        log.scrollTop=log.scrollHeight;
+        if(data.result?.name) selectedAgent=data.result.name;
+      }catch(e){ log.innerHTML+=`<div class="bubble fleet">Could not reach FYFTEN.</div>`; }
+      fyftenBusy=false; $('fleetStatus').textContent='Type a change or a question.'; $('fyftenInput').focus();
+    }
+    boot();
   </script>
 </body>
 </html>

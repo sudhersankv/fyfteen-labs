@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>fyfteen labs — sign in</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Manrope:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root{color-scheme:dark;--bg:#03080a;--line:#14333a;--text:#e8fbff;--muted:#7ea8b0;--cyan:#22f0c8}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(800px 380px at 20% -10%,rgba(34,240,200,.16),transparent 50%),var(--bg);color:var(--text);font:15px/1.45 Manrope,sans-serif}
+    form{width:min(380px,92vw);background:#071114;border:1px solid var(--line);border-radius:16px;padding:28px;box-shadow:0 18px 50px #0008}
+    h1{font-family:Syne,sans-serif;margin:0 0 8px;letter-spacing:-.05em}h1 i{color:var(--cyan);font-style:normal}
+    p{color:var(--muted);margin:0 0 18px}
+    label{display:block;margin:10px 0 6px;color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em}
+    input{width:100%;background:#041014;color:var(--text);border:1px solid var(--line);border-radius:10px;padding:11px 12px}
+    button{width:100%;margin-top:18px;border:0;border-radius:10px;padding:12px;background:var(--cyan);color:#041014;font-weight:800;cursor:pointer}
+  </style>
+</head>
+<body>
+  <form method="post" action="/login">
+    <h1>fyfteen<i>labs</i></h1>
+    <p>Local paper sandbox. Real Kalshi data, simulated funds. Sign in to open the desk.</p>
+    <label for="username">Username</label>
+    <input id="username" name="username" value="fyfteen" autocomplete="username">
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit">Open desk</button>
+  </form>
+</body>
+</html>

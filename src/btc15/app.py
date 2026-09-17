@@ -5,15 +5,15 @@ import json
 from contextlib import asynccontextmanager
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import HTMLResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
+from . import auth
 from .config import Settings
 from .engine import Engine
 from .fleet import Fleet
 from .storage import Store
-from .voice import transcribe_audio
 
 s = Settings()
 store = Store(s.db_path)
@@ -29,21 +29,21 @@ class ManualPaperOrder(BaseModel):
 
 
 class AgentCreate(BaseModel):
-    name: str = Field(min_length=2,max_length=32)
+    name: str = Field(min_length=2, max_length=32)
     template_id: str | None = None
     kind: str | None = None
-    budget: float = Field(ge=1,le=10_000)
-    threshold: float | None = Field(default=None,ge=.005,le=.20)
+    budget: float = Field(ge=1, le=10_000)
+    threshold: float | None = Field(default=None, ge=.005, le=.20)
     deployed: bool = True
-    policy: dict[str,float] | None = None
+    policy: dict[str, float] | None = None
 
 
 class AgentControl(BaseModel):
     action: str
-    budget: float | None = Field(default=None,ge=1,le=10_000)
-    threshold: float | None = Field(default=None,ge=.005,le=.20)
-    policy: dict[str,float] | None = None
-    delta: float | None = Field(default=None,ge=.01,le=10_000)
+    budget: float | None = Field(default=None, ge=1, le=10_000)
+    threshold: float | None = Field(default=None, ge=.005, le=.20)
+    policy: dict[str, float] | None = None
+    delta: float | None = Field(default=None, ge=.01, le=10_000)
     flatten: bool = False
     kind: str | None = None
     template_id: str | None = None
@@ -54,9 +54,9 @@ class FleetChat(BaseModel):
     reset: bool = False
 
 
-class VoiceClip(BaseModel):
-    audio_b64: str = Field(min_length=16)
-    content_type: str = "audio/wav"
+class LoginBody(BaseModel):
+    username: str = ""
+    password: str = ""
 
 
 @asynccontextmanager
@@ -69,26 +69,81 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="fyfteen labs", lifespan=lifespan)
+auth.install(app)
+
+
+def _guard(request: Request, mutating: bool = False) -> None:
+    auth.require_user(request)
+    if mutating:
+        auth.require_csrf(request)
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request):
+    from importlib.resources import files
+    if auth.logged_in(request):
+        return RedirectResponse("/", status_code=303)
+    return (files("btc15") / "login.html").read_text(encoding="utf-8")
+
+
+@app.post("/login")
+async def login(request: Request):
+    form = await request.form()
+    username = str(form.get("username") or "")
+    password = str(form.get("password") or "")
+    if not auth.verify_login(username, password):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    auth.login(request, username or auth.settings().fyfteen_user)
+    return RedirectResponse("/", status_code=303)
+
+
+@app.post("/api/login")
+async def api_login(request: Request, body: LoginBody):
+    if not auth.verify_login(body.username, body.password):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    auth.login(request, body.username or auth.settings().fyfteen_user)
+    return {"ok": True, "user": request.session.get("user"), "csrf": auth.csrf_token(request)}
+
+
+@app.api_route("/logout", methods=["GET", "POST"])
+async def logout(request: Request):
+    auth.logout(request)
+    return RedirectResponse("/login" if auth.enabled() else "/", status_code=303)
+
+
+@app.get("/api/session")
+async def session(request: Request):
+    return {
+        "auth_required": auth.enabled(),
+        "ok": auth.logged_in(request),
+        "user": request.session.get("user") if auth.logged_in(request) else None,
+        "csrf": auth.csrf_token(request) if auth.logged_in(request) else "",
+    }
 
 
 @app.get("/", response_class=HTMLResponse)
-async def dashboard():
+async def dashboard(request: Request):
+    if auth.enabled() and not auth.logged_in(request):
+        return RedirectResponse("/login", status_code=303)
     from importlib.resources import files
     return (files("btc15") / "dashboard.html").read_text(encoding="utf-8")
 
 
 @app.get("/api/state")
-async def state():
+async def state(request: Request):
+    _guard(request)
     return await engine.snapshot()
 
 
 @app.get("/api/catalog")
-async def catalog():
+async def catalog(request: Request):
+    _guard(request)
     return engine.catalog()
 
 
 @app.post("/api/manual-paper-order")
-async def manual_paper_order(order: ManualPaperOrder):
+async def manual_paper_order(request: Request, order: ManualPaperOrder):
+    _guard(request, True)
     try:
         return await engine.manual_order(order.action.lower(), order.side.lower(), order.amount)
     except ValueError as exc:
@@ -96,82 +151,62 @@ async def manual_paper_order(order: ManualPaperOrder):
 
 
 @app.post("/api/agents")
-async def create_agent(agent: AgentCreate):
+async def create_agent(request: Request, agent: AgentCreate):
+    _guard(request, True)
     try:
-        kind,threshold,policy=agent.kind,agent.threshold,agent.policy
+        kind, threshold, policy = agent.kind, agent.threshold, agent.policy
         if agent.template_id:
-            template=next((item for item in engine.catalog()["templates"]
-                           if item["id"]==agent.template_id),None)
+            template = next((item for item in engine.catalog()["templates"]
+                             if item["id"] == agent.template_id), None)
             if not template:
                 raise ValueError("Unknown bot template")
-            kind=template["kind"]
-            threshold=template["threshold"] if threshold is None else threshold
-            policy={**template["policy"],**(policy or {})}
+            kind = template["kind"]
+            threshold = template["threshold"] if threshold is None else threshold
+            policy = {**template["policy"], **(policy or {})}
         if not kind:
             raise ValueError("Choose a bot template")
-        return await engine.create_agent(agent.name,kind,agent.budget,
-                                         threshold or .03,agent.deployed,policy)
+        return await engine.create_agent(agent.name, kind, agent.budget,
+                                         threshold or .03, agent.deployed, policy)
     except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/agents/{name}")
-async def agent_detail(name: str):
+async def agent_detail(request: Request, name: str):
+    _guard(request)
     try:
         return await engine.agent_dossier(name)
     except ValueError as exc:
-        raise HTTPException(status_code=404,detail=str(exc)) from exc
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/api/agents/{name}/control")
-async def control_agent(name: str,control: AgentControl):
+async def control_agent(request: Request, name: str, control: AgentControl):
+    _guard(request, True)
     try:
-        return await engine.control_agent(name,control.action,control.budget,
-                                          control.threshold,control.policy,
-                                          control.delta,control.flatten,
-                                          control.kind,control.template_id)
+        return await engine.control_agent(name, control.action, control.budget,
+                                          control.threshold, control.policy,
+                                          control.delta, control.flatten,
+                                          control.kind, control.template_id)
     except ValueError as exc:
-        raise HTTPException(status_code=400,detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @app.get("/api/fleet")
-async def fleet_status():
+async def fleet_status(request: Request):
+    _guard(request)
     return fleet.status()
 
 
 @app.post("/api/fleet/chat")
-async def fleet_chat(body: FleetChat):
+async def fleet_chat(request: Request, body: FleetChat):
+    _guard(request, True)
     return await fleet.chat(body.text, reset=body.reset)
 
 
-@app.post("/api/fyften/transcribe")
-async def fyften_transcribe(clip: VoiceClip):
-    import base64
-    try:
-        audio = base64.b64decode(clip.audio_b64)
-        return await transcribe_audio(audio, clip.content_type, list(engine.experiments))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Speech backend failed: {exc}") from exc
-
-
-@app.post("/api/fyften/talk")
-async def fyften_talk(clip: VoiceClip):
-    import base64
-    try:
-        audio = base64.b64decode(clip.audio_b64)
-        heard = await transcribe_audio(audio, clip.content_type, list(engine.experiments))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Speech backend failed: {exc}") from exc
-    chat = await fleet.chat(heard["text"])
-    return {**chat, "transcript": heard["text"], "stt_provider": heard.get("provider")}
-
-
 @app.get("/api/chart")
-async def chart():
+async def chart(request: Request):
+    _guard(request)
     ticker = engine.current or ""
     return await store.rows("""SELECT ts,brti,target,p_yes,p_terminal,p_settlement,p_trend,
         confidence,yes_bid,yes_ask,settlement_average
@@ -179,105 +214,65 @@ async def chart():
 
 
 @app.get("/api/markets")
-async def markets():
+async def markets(request: Request):
+    _guard(request)
     return await store.rows("SELECT * FROM markets ORDER BY close_ts DESC LIMIT 100")
 
 
 @app.get("/api/markets/{ticker}")
-async def market_detail(ticker: str):
+async def market_detail(request: Request, ticker: str):
+    _guard(request)
     return {
         "market": await store.one("SELECT * FROM markets WHERE ticker=?", (ticker,)),
         "features": await store.rows("""SELECT * FROM features WHERE market_ticker=?
             ORDER BY ts LIMIT 5000""", (ticker,)),
         "fills": await store.rows("SELECT * FROM fills WHERE market_ticker=? ORDER BY fill_ts", (ticker,)),
-        "positions": await store.rows("SELECT * FROM positions WHERE market_ticker=?", (ticker,)),
         "closed_trades": await store.rows(
             "SELECT * FROM closed_trades WHERE market_ticker=? ORDER BY close_ts", (ticker,)),
     }
 
 
 @app.get("/api/analytics")
-async def analytics():
+async def analytics(request: Request):
+    _guard(request)
     summary = []
     for exp in list(engine.experiments.values()):
-        row = await store.one("""SELECT COUNT(*) trades,COALESCE(SUM(fee),0) fees,
-            COALESCE(SUM(spread_cost),0) spread_cost,COALESCE(AVG(price),0) avg_price
+        row = await store.one("""SELECT COUNT(*) trades,COALESCE(SUM(fee),0) fees
             FROM fills WHERE experiment=?""", (exp.name,))
         settled = await store.one("""SELECT COUNT(*) settled,
             SUM(CASE WHEN pnl>0 THEN 1 ELSE 0 END) wins,
             SUM(CASE WHEN pnl<=0 THEN 1 ELSE 0 END) losses,
-            COALESCE(SUM(pnl),0) net_pnl,
-            COALESCE(SUM(CASE WHEN pnl>0 THEN pnl ELSE 0 END),0) gross_win,
-            COALESCE(-SUM(CASE WHEN pnl<0 THEN pnl ELSE 0 END),0) gross_loss
+            COALESCE(SUM(pnl),0) net_pnl
             FROM closed_trades WHERE experiment=?""", (exp.name,))
-        avg_edge = await store.one("SELECT COALESCE(AVG(net_edge),0) value FROM decisions WHERE experiment=? AND action!='HOLD'", (exp.name,))
-        curve = await store.rows("SELECT ts,equity FROM equity WHERE experiment=? ORDER BY ts", (exp.name,))
-        peak,max_drawdown=exp.allocated_capital,0.0
+        curve = await store.rows(
+            "SELECT ts,equity FROM equity WHERE experiment=? ORDER BY ts", (exp.name,))
+        peak, max_drawdown = exp.allocated_capital, 0.0
         for point in curve:
             peak = max(peak, point["equity"])
-            max_drawdown = max(max_drawdown, peak-point["equity"])
-        ending_equity = curve[-1]["equity"] if curve else exp.cash
-        summary.append({"strategy":exp.name,"starting_balance":exp.allocated_capital,
-            "deployed":exp.deployed,"cash":exp.cash,
-            "bank":exp.bank,"ending_equity":ending_equity,
-            "total_equity":ending_equity+exp.bank,
-            "realized":exp.realized,**(row or {}),**(settled or {}),
-            "gross_pnl":(settled or {}).get("net_pnl",0)+(row or {}).get("fees",0),
-            "avg_pnl_trade":((settled or {}).get("net_pnl",0)/max(1,(settled or {}).get("settled",0))),
-            "max_drawdown":max_drawdown,"avg_estimated_edge":avg_edge["value"],"equity_curve":curve[::10]})
+            max_drawdown = max(max_drawdown, peak - point["equity"])
+        ending = curve[-1]["equity"] if curve else exp.cash
+        settled_n = (settled or {}).get("settled") or 0
+        summary.append({
+            "strategy": exp.name, "template": exp.kind, "cash": exp.cash,
+            "equity": ending + exp.bank, "trades": (row or {}).get("trades") or 0,
+            "fees": (row or {}).get("fees") or 0, **(settled or {}),
+            "win_rate": ((settled or {}).get("wins") or 0) / max(1, settled_n),
+            "avg_pnl_trade": ((settled or {}).get("net_pnl") or 0) / max(1, settled_n),
+            "max_drawdown": max_drawdown,
+        })
     calibration = await store.rows("""SELECT CAST(p_yes*10 AS INT)/10.0 bucket,COUNT(*) n,
-        AVG(CASE WHEN m.result='yes' THEN 1.0 ELSE 0.0 END) actual,
-        AVG((p_yes-(CASE WHEN m.result='yes' THEN 1.0 ELSE 0.0 END))*
-            (p_yes-(CASE WHEN m.result='yes' THEN 1.0 ELSE 0.0 END))) brier
+        AVG(CASE WHEN m.result='yes' THEN 1.0 ELSE 0.0 END) actual
         FROM features f JOIN markets m ON m.ticker=f.market_ticker
         WHERE m.result IN ('yes','no') GROUP BY bucket ORDER BY bucket""")
-    model_scores = await store.one("""WITH ranked AS (
-        SELECT f.*,CASE WHEN m.result='yes' THEN 1.0 ELSE 0.0 END outcome,
-          ROW_NUMBER() OVER (
-            PARTITION BY f.market_ticker
-            ORDER BY ABS(f.seconds_left-120),f.id) rank
-        FROM features f JOIN markets m ON m.ticker=f.market_ticker
-        WHERE m.result IN ('yes','no') AND f.data_fresh=1 AND f.target_valid=1),
-      snapshots AS (SELECT * FROM ranked WHERE rank=1)
-        SELECT COUNT(*) markets,AVG((p_yes-outcome)*(p_yes-outcome)) ensemble_brier,
-          AVG((p_terminal-outcome)*(p_terminal-outcome)) terminal_brier,
-          AVG((p_settlement-outcome)*(p_settlement-outcome)) settlement_brier,
-          AVG(confidence) average_confidence FROM snapshots""")
-    attribution = await store.rows("""SELECT c.experiment,c.side,c.pnl,d.net_edge,
-        x.seconds_left,x.volatility,ABS(x.brti-x.target)/NULLIF(x.target,0) norm_distance,
-        x.momentum_5s,x.spread,x.imbalance,x.regime
-        FROM closed_trades c
-        LEFT JOIN decisions d ON d.id=(SELECT id FROM decisions WHERE experiment=c.experiment
-          AND market_ticker=c.market_ticker AND ts<=c.close_ts ORDER BY ts DESC LIMIT 1)
-        LEFT JOIN features x ON x.id=(SELECT id FROM features WHERE market_ticker=c.market_ticker
-          AND ts<=c.close_ts ORDER BY ts DESC LIMIT 1)""")
-    def bucket(name, value):
-        if name == "time_remaining": return f"{int(value//60)}m"
-        if name == "estimated_edge": return f"{int(value*20)*5}%"
-        if name in ("volatility","norm_distance"): return f"{value:.5f}"
-        if name == "momentum": return "up" if value > 0 else "down"
-        if name == "spread": return f"{int(value*20)*5}%"
-        if name == "imbalance": return "buy" if value > .15 else ("sell" if value < -.15 else "neutral")
-        return str(value)
-    dimensions = {"strategy":"experiment","side":"side","time_remaining":"seconds_left",
-        "estimated_edge":"net_edge","volatility":"volatility","norm_distance":"norm_distance",
-        "momentum":"momentum_5s","spread":"spread","imbalance":"imbalance","regime":"regime"}
-    grouped = []
-    for dimension, key in dimensions.items():
-        bins = {}
-        for row in attribution:
-            if row.get(key) is None: continue
-            label = bucket(dimension,row[key])
-            bins.setdefault(label,[0,0.0]); bins[label][0] += 1; bins[label][1] += row["pnl"] or 0
-        grouped += [{"dimension":dimension,"bucket":k,"n":v[0],"net_pnl":v[1]} for k,v in bins.items()]
-    return {"strategies":summary,"calibration":calibration,"breakdowns":grouped,
-            "model_scores":model_scores or {},"calibrator":engine.calibrator.status(),
-            "warning":"One overnight sample cannot establish a profitable edge."}
+    return {"strategies": summary, "calibration": calibration}
 
 
 @app.websocket("/ws")
 async def ws(websocket: WebSocket):
     await websocket.accept()
+    if auth.enabled() and not (getattr(websocket, "session", None) or {}).get("user"):
+        await websocket.close(code=4401)
+        return
     try:
         while True:
             await websocket.send_text(json.dumps(await engine.snapshot(), default=str))

@@ -1,139 +1,142 @@
+"""Bot templates and plain-English decision labels."""
+
+from __future__ import annotations
+
 AGENT_KINDS = {
-    "settlement": {
-        "title": "Late closer",
-        "plain_job": "Late closer",
-        "summary": "Buys only in the last 3 minutes, when Kalshi's official end-average is almost known. Quiet for the rest of the window.",
+    "fair-value": {
+        "title": "Fair Value",
+        "summary": "Estimates P(YES) from how far Bitcoin is from the target, how much time is left, and recent volatility. Buys when that estimate is cheaper than the live Kalshi ask after fees.",
         "does": [
-            "Uses the zero-drift settlement probability, not a last-price guess.",
-            "During the final minute it incorporates each observed official BRTI reading.",
-            "Trades rarely and may hold a strong late position through settlement.",
+            "Uses distance from the strike, time remaining, and recent volatility.",
+            "Compares model probability to the executable YES or NO ask.",
+            "Trades across most of the 15-minute window when leftover edge is large enough.",
+        ],
+        "buy_when": [
+            "Market data is fresh and a quote is executable.",
+            "Estimated edge after fees clears the minimum-edge setting.",
+            "Simple cash, spread, depth, and exposure checks pass.",
+        ],
+        "skip_when": ["Estimated edge is below the threshold.", "The book is stale or empty."],
+        "entry_window_seconds": 840,
+        "default_threshold": 0.03,
+        "risk": "Moderate",
+        "when": "Anytime leftover edge is large enough",
+    },
+    "momentum": {
+        "title": "Momentum",
+        "summary": "Starts from Fair Value, then tilts the estimate toward the recent Bitcoin move. Still one probability versus one executable ask.",
+        "does": [
+            "Uses the Fair Value estimate as a base.",
+            "Adds short-term Bitcoin direction as a tilt, not a stack of vetoes.",
+            "Does not require several time horizons to agree perfectly.",
+        ],
+        "buy_when": [
+            "Fair Value plus recent momentum still leaves leftover edge after fees.",
+            "Simple risk checks pass.",
+        ],
+        "skip_when": ["Edge is below the threshold.", "The book is stale or empty."],
+        "entry_window_seconds": 840,
+        "default_threshold": 0.025,
+        "risk": "Moderate",
+        "when": "When Bitcoin has been moving the same way for a few seconds",
+    },
+    "late-settlement": {
+        "title": "Late Settlement",
+        "summary": "Only looks for trades in the last 3 minutes, using Kalshi's official end-average mechanics. Quiet on purpose.",
+        "does": [
+            "Waits until the official 60-second BRTI average is becoming knowable.",
+            "Uses settlement probability, not a last-tick guess.",
+            "Usually makes fewer trades than the other templates.",
         ],
         "buy_when": [
             "Three minutes or less remain.",
-            "Executable net edge survives fees, spread, uncertainty, and safety margin.",
-            "The preferred side persists and all book/risk checks pass.",
+            "Settlement probability versus the live ask leaves leftover edge after fees.",
         ],
-        "skip_when": ["More than three minutes remain.", "The settlement estimate is not informative enough."],
+        "skip_when": ["More than three minutes remain.", "Edge is below the threshold."],
         "entry_window_seconds": 180,
-        "opportunity_bucket": "settlement",
-        "default_threshold": 0.03,
-    },
-    "trend-rider": {
-        "title": "Direction",
-        "plain_job": "Direction",
-        "summary": "Buys in the last 6 minutes when Bitcoin has been moving the same way across 5, 30, and 60 seconds. This is the job that actually trades most often.",
-        "does": [
-            "Requires at least two momentum horizons to agree.",
-            "Uses a heavily shrunk drift forecast.",
-            "Uses order flow only to avoid badly timed entries, not as a 15-minute forecast.",
-        ],
-        "buy_when": [
-            "Six minutes or less remain and a non-choppy trend persists.",
-            "Trend direction agrees with the chosen YES/NO side.",
-            "Executable net edge clears the configured threshold.",
-        ],
-        "skip_when": ["Momentum horizons conflict.", "Strike crossings indicate chop.", "Strong immediate flow opposes the trade."],
-        "entry_window_seconds": 360,
-        "opportunity_bucket": "trend",
-        "default_threshold": 0.035,
-    },
-    "hybrid": {
-        "title": "Both agree",
-        "plain_job": "Both agree",
-        "summary": "Buys in the last 4 minutes only when the late-average call and the direction call pick the same side.",
-        "does": [
-            "Blends settlement and trend forecasts instead of stacking many indicators.",
-            "Requires both forecasts to choose the same side.",
-            "Rejects strong opposing short-lived order flow.",
-        ],
-        "buy_when": [
-            "Four minutes or less remain.",
-            "Settlement and trend forecasts agree and recent choices persist.",
-            "Executable net edge clears all costs and the configured threshold.",
-        ],
-        "skip_when": ["Forecasts disagree.", "The preferred side is unstable.", "Immediate flow is strongly adverse."],
-        "entry_window_seconds": 240,
-        "opportunity_bucket": "hybrid",
-        "default_threshold": 0.03,
+        "default_threshold": 0.025,
+        "risk": "Lower",
+        "when": "Last 3 minutes only",
     },
 }
 
-OPPORTUNITY_DEFINITION = (
-    "An opportunity is leftover executable edge: a live YES or NO ask that is "
-    "still cheap after you subtract the fee, safety margin, and model uncertainty "
-    "from the bucket's forecast. Agents are configured to act on one named bucket. "
-    "They wait when that bucket is closed. Waiting is not a −100% loss."
-)
+LEGACY_KINDS = {
+    "fair-value": "fair-value",
+    "momentum": "momentum",
+    "late-settlement": "late-settlement",
+    "settlement": "late-settlement",
+    "trend-rider": "momentum",
+    "hybrid": "fair-value",
+    "trend": "momentum",
+    "breakout": "momentum",
+    "order-flow": "fair-value",
+    "microstructure": "fair-value",
+    "confirmation": "fair-value",
+    "regime-confirmation": "fair-value",
+    "consensus": "fair-value",
+    "ensemble-consensus": "fair-value",
+    "late-closer": "late-settlement",
+    "direction": "momentum",
+}
 
-OPPORTUNITY_FORMULA = "leftover = forecast − executable ask − fee − safety − uncertainty"
+REASON_LABELS = {
+    "stale": "Market data is stale",
+    "invalid-target": "This market's target is invalid",
+    "fees": "Production fees are not verified yet",
+    "no-quote": "No executable quote",
+    "window": "Outside the entry window",
+    "below-edge": "Below minimum edge",
+    "spread": "Spread too wide",
+    "liquidity": "Not enough visible depth",
+    "cooldown": "Cooling down after the last fill",
+    "entries": "Already at max trades this contract",
+    "exposure": "At the exposure cap",
+    "cash": "Not enough fake cash",
+    "paused": "Bot is paused",
+    "buy": "Bought because leftover edge cleared the threshold",
+    "sell": "Sold because the bid was better than holding",
+    "hold-position": "Holding an open paper position",
+}
 
-NOT_OPPORTUNITIES = [
-    {"title": "A raw YES/NO guess",
-     "why": "Believing Bitcoin will finish above the strike is a view, not a trade. The trade exists only if the ask is cheaper than that view after costs."},
-    {"title": "The last Kalshi print or the midpoint",
-     "why": "You cannot fill at the last trade or between bid and ask. Only the visible ask is executable."},
-    {"title": "The first 9–12 minutes of the window",
-     "why": "This contract settles on a 60-second average at the end. Early prices are mostly a coin flip after fees. Our recorded data was weaker than the market itself beyond six minutes."},
-    {"title": "A one-second order-book imbalance",
-     "why": "Book pressure can time a fill for a few seconds. Research on BTC order-book imbalance shows that signal decaying in tens of seconds, not over a 15-minute contract."},
-    {"title": "News, chat, or an LLM hunch",
-     "why": "Those are not a priced leftover versus the live ask. FYFTEN only assigns one of these three jobs; it does not invent a forecast."},
+EDGE_FORMULA = "edge = model probability − executable ask − fee − safety margin"
+
+KNOBS = [
+    {"id": "budget", "label": "Fake balance", "control": True, "beginner": True,
+     "meaning": "Simulated cash assigned to this bot. New buys size from working cash."},
+    {"id": "threshold", "label": "Minimum edge", "control": True, "beginner": True,
+     "meaning": "How cheap the contract must be versus the model after fees. 4% means about 4 cents."},
+    {"id": "max_order_dollars", "label": "Max dollars per trade", "control": True, "beginner": True,
+     "meaning": "Hard cap on one simulated buy."},
+    {"id": "max_market_exposure", "label": "Maximum exposure", "control": True, "beginner": True,
+     "meaning": "Maximum entry cost this bot may commit to one contract."},
+    {"id": "deploy", "label": "Deploy / Pause", "control": True, "beginner": True,
+     "meaning": "Pause stops new buys. Open positions still mark to market and settle."},
+    {"id": "retire", "label": "Retire", "control": True, "beginner": True,
+     "meaning": "Removes the bot after it is flat. History stays."},
 ]
 
-OPPORTUNITY_BUCKETS = [
-    {
-        "id": "settlement",
-        "title": "Settlement misprice",
-        "plain_name": "Settlement misprice",
-        "forecast": "Official 60 one-second BRTI readings in the final minute, averaged",
-        "window": "Last 3 minutes",
-        "window_seconds": 180,
-        "acted_on_by": ["settlement"],
-        "template_ids": ["settlement-careful"],
-        "how_it_acts": "Buys the cheap late side and prefers to hold a strong thesis through official settlement.",
-        "not": "Does not chase the first 12 minutes of direction.",
-        "teach": "Kalshi does not settle this contract on the last Bitcoin tick. YES wins if the official average of 60 BRTI prints in the final minute is at or above the target. Late in the window that average becomes knowable, so a cheap ask can be a real leftover.",
-        "example": "90 seconds left, 40 official prints already average above the target, and NO is still offered at 40¢. That leftover is a settlement misprice if it survives fees.",
-        "user_can_change": "You can make this bot pickier (higher leftover required, later entry) or slightly earlier. You cannot turn it into an all-day trend bot without changing its bucket.",
-        "source": "Kalshi crypto settlement rules: 60 CF Benchmarks RTI readings, one per second, in the expiration minute.",
-    },
-    {
-        "id": "trend",
-        "title": "Confirmed short trend",
-        "plain_name": "Confirmed short trend",
-        "forecast": "BRTI direction that agrees across 5, 30, and 60 seconds, projected only a little",
-        "window": "Last 6 minutes",
-        "window_seconds": 360,
-        "acted_on_by": ["trend-rider"],
-        "template_ids": ["trend-confirmed"],
-        "how_it_acts": "Enters only when at least two horizons agree, then uses the book to avoid a badly timed fill.",
-        "not": "Does not treat a one-second book imbalance as a 15-minute forecast.",
-        "teach": "Short Bitcoin moves contain some information for seconds to a few minutes, then fade. This bucket asks whether a persistent move has not yet been fully paid in the Kalshi ask. It never extrapolates the last tick at full strength.",
-        "example": "Four minutes left, 5s / 30s / 60s BRTI all up, and YES is still cheaper than that shrunk forecast after fees.",
-        "user_can_change": "You can require a larger leftover or a later start. Making the window much earlier usually means paying a coin-flip price.",
-        "source": "BTC order-book and return studies: imbalance and flow help for seconds; minute-scale direction is a different, weaker claim.",
-    },
-    {
-        "id": "hybrid",
-        "title": "Agreement",
-        "plain_name": "Agreement",
-        "forecast": "Settlement and short-trend forecasts choosing the same YES or NO",
-        "window": "Last 4 minutes",
-        "window_seconds": 240,
-        "acted_on_by": ["hybrid"],
-        "template_ids": ["hybrid-balanced"],
-        "how_it_acts": "Trades only the intersection: both forecasts agree and leftover survives costs.",
-        "not": "Does not fire when the two forecasts disagree, even if one looks cheap.",
-        "teach": "This is the pickiest bucket. It exists because one model can look cheap while the other says you are early or on the wrong side. Agreement means both named forecasts want the same contract.",
-        "example": "Settlement says YES leftover is +6¢ and the short trend also says YES. Only then does an Agreement bot consider a buy.",
-        "user_can_change": "Raising leftover makes it rarer. Lowering leftover makes it busier and more likely to pay noise.",
-        "source": "Prediction-market execution practice: theoretical edge is not tradable until forecasts agree enough to survive spread, fees, and timing.",
-    },
-]
+SHARED_TRIGGERS = {
+    "buy": [
+        "Bot is deployed and the book is fresh.",
+        "A YES or NO ask is executable.",
+        "model probability − ask − fee − safety ≥ minimum edge.",
+        "Spread, depth, cash, cooldown, and exposure checks pass.",
+        "Late Settlement also requires three minutes or less remaining.",
+    ],
+    "sell": [
+        "The executable bid is richer than the modeled hold value by the exit margin.",
+        "Or the model has clearly reversed against an open position.",
+    ],
+    "blocked": [
+        "stale or empty book",
+        "below minimum edge",
+        "spread, depth, cooldown, trade-count, or exposure caps",
+    ],
+}
 
 
 def leftover_edge(probability: float | None, ask: float | None, fee: float,
-                  safety: float, uncertainty: float) -> float | None:
+                  safety: float, uncertainty: float = 0.0) -> float | None:
     if probability is None or ask is None:
         return None
     return probability - ask - fee - safety - uncertainty
@@ -143,101 +146,71 @@ def classify_opportunities(*, seconds_left: float, fresh: bool,
                            yes_ask: float | None, no_ask: float | None,
                            p_settlement: float | None, p_trend: float | None,
                            fee_yes: float, fee_no: float,
-                           safety: float, uncertainty: float) -> list[dict]:
+                           safety: float, uncertainty: float,
+                           p_terminal: float | None = None) -> list[dict]:
     forecasts = {
-        "settlement": p_settlement,
-        "trend": p_trend,
-        "hybrid": (None if p_settlement is None or p_trend is None else
-                   (p_settlement + p_trend) / 2 if (p_settlement - .5) * (p_trend - .5) > 0 else None),
+        "fair-value": p_terminal if p_terminal is not None else p_settlement,
+        "momentum": p_trend,
+        "late-settlement": p_settlement,
     }
     classified = []
-    for bucket in OPPORTUNITY_BUCKETS:
-        probability = forecasts[bucket["id"]]
-        window_open = seconds_left <= bucket["window_seconds"]
-        yes_edge = leftover_edge(probability, yes_ask, fee_yes, safety, uncertainty)
+    for kind, meta in AGENT_KINDS.items():
+        probability = forecasts[kind]
+        window_open = seconds_left <= meta["entry_window_seconds"]
+        yes_edge = leftover_edge(probability, yes_ask, fee_yes, safety, 0)
         no_edge = leftover_edge(None if probability is None else 1 - probability,
-                               no_ask, fee_no, safety, uncertainty)
-        choices = [(yes_edge, "yes", yes_ask), (no_edge, "no", no_ask)]
-        open_choices = [row for row in choices if row[0] is not None]
-        side, edge, price = (None, None, None)
+                               no_ask, fee_no, safety, 0)
+        open_choices = [(edge, side, price) for edge, side, price in
+                        ((yes_edge, "yes", yes_ask), (no_edge, "no", no_ask)) if edge is not None]
+        edge = side = price = None
         if open_choices:
             edge, side, price = max(open_choices)
-        status = "waiting"
         if not fresh:
-            status = "stale"
+            status, plain = "stale", "Feed is stale."
         elif not window_open:
-            status = "closed"
+            status, plain = "closed", f"Window closed. {meta['when']}."
         elif probability is None:
-            status = "disagreement" if bucket["id"] == "hybrid" else "warming"
+            status, plain = "warming", "Forecast is still warming up."
         elif edge is None:
-            status = "no-book"
+            status, plain = "no-book", "No executable ask."
         elif edge > 0:
-            status = "open"
+            status, plain = "open", f"Open leftover on {(side or '').upper()}."
         else:
-            status = "no-edge"
-        plain = {
-            "stale": "Feed is stale — not an opportunity until the book and BRTI agree.",
-            "closed": f"Window closed. This bucket only opens in the {bucket['window'].lower()}.",
-            "disagreement": "Settlement and trend disagree, so Agreement is not open.",
-            "warming": "Forecast is still warming up.",
-            "no-book": "No executable ask on the cheap side.",
-            "open": f"Open leftover on {(side or '').upper()}.",
-            "no-edge": "Forecast exists, but after costs the ask is not cheap.",
-            "waiting": "Waiting for a readable market.",
-        }[status]
+            status, plain = "no-edge", "The ask is not cheap after fees."
         classified.append({
-            **bucket, "status": status, "plain_status": plain,
-            "side": side if status == "open" else None,
-            "edge": edge, "price": price, "window_open": window_open, "fresh": fresh,
+            "id": kind, "title": meta["title"], "status": status, "plain_status": plain,
+            "side": side if status == "open" else None, "edge": edge, "price": price,
+            "window_open": window_open, "fresh": fresh, "window": meta["when"],
+            "window_seconds": meta["entry_window_seconds"],
         })
     return classified
 
-KNOBS = [
-    {"id": "budget", "label": "Budget", "control": True,
-     "meaning": "Paper cash assigned to this agent. New buys size from working cash, not banked profit."},
-    {"id": "threshold", "label": "Min edge", "control": True,
-     "meaning": "How cheap the contract must be versus the agent's probability after fees, safety margin, and uncertainty. 3% means about 3 cents of leftover edge."},
-    {"id": "deploy", "label": "Deploy / Pause", "control": True,
-     "meaning": "Pause stops new buys. Open positions still mark to market and settle officially."},
-    {"id": "retire", "label": "Retire", "control": True,
-     "meaning": "Removes the agent from the desk after it is flat. Historical trades remain."},
-    {"id": "safety_margin", "label": "Safety margin", "control": False,
-     "meaning": "Extra haircut so a quote that is only barely fair is not bought."},
-    {"id": "confidence", "label": "Confidence", "control": False,
-     "meaning": "Rises as ~60 seconds of BRTI history accumulates and models agree. Low confidence blocks autonomous buys and shrinks size."},
-    {"id": "uncertainty", "label": "Uncertainty", "control": False,
-     "meaning": "Penalty subtracted from edge when settlement and terminal models disagree or data is thin."},
-    {"id": "size", "label": "Next size", "control": False,
-     "meaning": "Confidence-scaled fractional Kelly, capped at a fraction of cash and the hard dollars-per-trade limit."},
-]
-
-SHARED_TRIGGERS = {
-    "buy": [
-        "Agent is deployed and the executable book is fresh.",
-        "Model confidence is high enough (about one minute of synchronized BRTI).",
-        "Specialist filter for this kind passes.",
-        "probability − ask − fee − safety margin − uncertainty ≥ min edge.",
-        "Spread, liquidity, time remaining, cooldown, trade-count, and exposure checks pass.",
-    ],
-    "sell": [
-        "The executable bid is richer than the current hold value.",
-        "Or a persistent forecast reversal breaks the original thesis.",
-        "Or an open profit is reduced after probability and order flow weaken together.",
-        "Order flow alone never forces a loss. Strong late winners may settle.",
-    ],
-    "blocked": [
-        "stale or unsynchronized feed",
-        "insufficient model history / confidence",
-        "too near close, wide spread, or thin depth",
-        "cooldown, max trades per market, or exposure caps",
-    ],
-}
-
 
 def kind_guide(kind: str) -> dict:
-    guide = dict(AGENT_KINDS.get(kind, {
-        "title": kind, "summary": "Custom specialist.", "does": [], "buy_when": [],
-        "skip_when": [], "default_threshold": 0.03,
+    resolved = LEGACY_KINDS.get(kind, kind)
+    guide = dict(AGENT_KINDS.get(resolved, {
+        "title": kind, "summary": "Custom template.", "does": [], "buy_when": [],
+        "skip_when": [], "default_threshold": 0.03, "risk": "Moderate", "when": "",
     }))
-    guide["kind"] = kind
+    guide["kind"] = resolved
     return guide
+
+
+# Back-compat names used by older tests and comments.
+OPPORTUNITY_DEFINITION = (
+    "An opportunity is leftover executable edge: a live YES or NO ask that is "
+    "still cheap after fees and a safety margin versus the template's probability."
+)
+OPPORTUNITY_FORMULA = EDGE_FORMULA
+OPPORTUNITY_BUCKETS = [
+    {"id": kind, "title": meta["title"], "plain_name": meta["title"],
+     "window": meta["when"], "window_seconds": meta["entry_window_seconds"],
+     "acted_on_by": [kind], "template_ids": [kind]}
+    for kind, meta in AGENT_KINDS.items()
+]
+NOT_OPPORTUNITIES = [
+    {"title": "A raw YES/NO guess",
+     "why": "Believing Bitcoin finishes above the strike is a view, not a trade."},
+    {"title": "The last print or the midpoint",
+     "why": "Paper fills use the visible ask, never the midpoint."},
+]

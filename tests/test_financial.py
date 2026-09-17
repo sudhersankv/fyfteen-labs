@@ -7,15 +7,15 @@ import pytest
 from btc15.config import Settings
 from btc15.domain import (Market,OrderBook,PriceHistory,fair_probability,taker_fee,
                           taker_fee_for_legs)
-from btc15.catalog import classify_opportunities
+from btc15.catalog import classify_opportunities, leftover_edge
 from btc15.engine import Engine
-from btc15.fleet import Fleet, compile_local
-from btc15.fyften_keys import llm_config, stt_config
+from btc15.fleet import TOOLS, Fleet, compile_local
+from btc15.fyften_keys import llm_config
 from btc15.names import resolve_agent_name
-from btc15.voice import transcribe_audio
 from btc15.model import MicrostructureState,PlattCalibrator,settlement_probability
 from btc15.storage import Store
 from btc15.replay import run as replay_run
+from btc15 import auth
 
 
 def test_unified_yes_price_book_and_executable_prices():
@@ -105,22 +105,28 @@ def test_settlement_uncertainty_includes_wait_before_final_minute():
     assert far_std>near_std
 
 
-def test_opportunity_buckets_need_window_agreement_and_leftover_edge():
+def test_opportunity_windows_follow_the_three_templates():
     closed = classify_opportunities(
         seconds_left=500,fresh=True,yes_ask=.40,no_ask=.62,
-        p_settlement=.70,p_trend=.72,fee_yes=.01,fee_no=.01,safety=.01,uncertainty=.01)
-    assert {row["id"]:row["status"] for row in closed}["settlement"] == "closed"
-    assert "last 3 minutes" in {row["id"]:row["plain_status"] for row in closed}["settlement"]
+        p_settlement=.70,p_trend=.72,p_terminal=.71,
+        fee_yes=.01,fee_no=.01,safety=.01,uncertainty=.01)
+    by_id = {row["id"]:row for row in closed}
+    assert set(by_id) == {"fair-value", "momentum", "late-settlement"}
+    assert by_id["late-settlement"]["status"] == "closed"
+    assert "3 minutes" in by_id["late-settlement"]["plain_status"]
+    assert by_id["fair-value"]["status"] == "open"
     open_yes = classify_opportunities(
         seconds_left=90,fresh=True,yes_ask=.40,no_ask=.62,
-        p_settlement=.80,p_trend=.78,fee_yes=.01,fee_no=.01,safety=.01,uncertainty=.01)
+        p_settlement=.80,p_trend=.78,p_terminal=.79,
+        fee_yes=.01,fee_no=.01,safety=.01,uncertainty=.01)
     by_id = {row["id"]:row for row in open_yes}
-    assert by_id["settlement"]["status"] == "open" and by_id["settlement"]["side"] == "yes"
-    assert by_id["hybrid"]["status"] == "open"
-    disagreed = classify_opportunities(
-        seconds_left=90,fresh=True,yes_ask=.40,no_ask=.62,
-        p_settlement=.80,p_trend=.20,fee_yes=.01,fee_no=.01,safety=.01,uncertainty=.01)
-    assert {row["id"]:row["status"] for row in disagreed}["hybrid"] == "disagreement"
+    assert by_id["late-settlement"]["status"] == "open" and by_id["late-settlement"]["side"] == "yes"
+    assert by_id["momentum"]["status"] == "open"
+    stale = classify_opportunities(
+        seconds_left=90,fresh=False,yes_ask=.40,no_ask=.62,
+        p_settlement=.80,p_trend=.20,p_terminal=.50,
+        fee_yes=.01,fee_no=.01,safety=.01,uncertainty=.01)
+    assert all(row["status"] == "stale" for row in stale)
 
 
 def test_shrunk_drift_moves_forecast_without_becoming_deterministic():
@@ -186,7 +192,7 @@ async def test_brti_final_minute_fields_and_latency_fill(tmp_path):
                  min_valid_btc_target=1)
     engine = Engine(s, store)
     engine.fees_verified = True
-    await engine.create_agent("test-agent","settlement",20,.03,True)
+    await engine.create_agent("test-agent","late-settlement",20,.03,True)
     now = time.time()
     m = Market("T","E",100,now-10,now+100,"above")
     engine.markets["T"], engine.current = m, "T"
@@ -216,7 +222,7 @@ async def test_brti_final_minute_fields_and_latency_fill(tmp_path):
 async def test_risk_blocks_stale_and_settlement_uses_official_result(tmp_path):
     store = Store(tmp_path/"x.db"); await store.open()
     engine = Engine(Settings(db_path=tmp_path/"x.db"), store)
-    await engine.create_agent("test-agent","settlement",20,.03,True)
+    await engine.create_agent("test-agent","late-settlement",20,.03,True)
     now = time.time()
     m = Market("T","E",100,now-10,now+10,"above")
     engine.markets["T"], engine.current = m, "T"
@@ -277,7 +283,7 @@ async def test_dynamic_agent_and_profitable_exit_banks_twenty_percent(tmp_path):
     engine = Engine(settings,store)
     engine.fees_verified=True
     assert not engine.experiments
-    await engine.create_agent("fair-value","settlement",20,.03,True)
+    await engine.create_agent("fair-value","fair-value",20,.03,True)
     assert list(engine.experiments)==["fair-value"]
     assert engine.experiments["fair-value"].deployed
     await engine.control_agent("fair-value","pause")
@@ -295,28 +301,28 @@ async def test_dynamic_agent_and_profitable_exit_banks_twenty_percent(tmp_path):
         "entry_stop_seconds":60,"max_market_exposure":15,"max_total_exposure":20,
     })
     assert engine.experiments["fair-value"].policy["max_spread"]==.03
-    assert engine.experiments["fair-value"].policy["min_confidence"]==.50
+    assert "min_confidence" not in engine.experiments["fair-value"].policy
     await engine.control_agent("fair-value","deploy")
     catalog=engine.catalog()
-    assert any(k["kind"]=="settlement" for k in catalog["kinds"])
+    assert {k["kind"] for k in catalog["kinds"]} == {"fair-value","momentum","late-settlement"}
     assert {template["id"] for template in catalog["templates"]} == {
-        "settlement-careful","trend-confirmed","hybrid-balanced"}
+        "fair-value","momentum","late-settlement"}
     assert catalog["compiler_contract"]["controller"] == "FYFTEN"
-    assert catalog["compiler_contract"]["required"] == [
-        "template_id","name","budget","deployed"]
+    assert catalog["compiler_contract"]["required"] == ["template_id","name","budget"]
     assert [bucket["id"] for bucket in catalog["opportunity_buckets"]] == [
-        "settlement","trend","hybrid"]
-    assert catalog["templates"][0]["bucket"] == "settlement"
-    assert catalog["opportunity_formula"].startswith("leftover")
+        "fair-value","momentum","late-settlement"]
+    assert catalog["templates"][0]["id"] == "fair-value"
+    assert "model probability" in catalog["opportunity_formula"]
     assert catalog["not_opportunities"]
     dossier=await engine.agent_dossier("fair-value")
-    assert dossier["guide"]["title"]=="Late closer"
+    assert dossier["guide"]["title"]=="Fair Value"
     assert dossier["triggers"]["buy"] and dossier["knobs"]
     assert dossier["policy"]["entry_stop_seconds"]==60
+    assert dossier["why_not"]["counts"] == []
     assert engine.compound_size(20)==4
     assert engine.compound_size(80)==16
     assert engine.compound_size(200)==20
-    assert engine.smart_size(20,.70,.50,.80,.10)==1.28
+    assert engine.smart_size(20,.70,.50,.80,.10)==4.0
     assert engine.smart_size(20,.70,.50,.80,-.01)==0
     now=time.time()
     market=Market("T","E",100,now-10,now+100,"above")
@@ -326,8 +332,8 @@ async def test_dynamic_agent_and_profitable_exit_banks_twenty_percent(tmp_path):
     book.updated=now
     engine.books["T"]=book
     exp=engine.experiments["fair-value"]
-    assert engine.risk_reason(exp,market,book,
-        {"confidence":1,"seconds_left":100,"spread":.04},now,False,"yes",.1)=="BLOCKED: spread"
+    assert "spread" in engine.risk_reason(exp,market,book,
+        {"confidence":1,"seconds_left":100,"spread":.04},now,False,"yes",.1).lower()
     exp.cash=18.90
     exp.exposure_by_market["T"]=1.0
     await store.execute("INSERT INTO positions VALUES(?,?,?,?,?,?,0,NULL)",
@@ -367,41 +373,32 @@ async def test_legacy_closed_trade_migration_does_not_duplicate_settlement(tmp_p
     await reopened.close()
 
 
-def test_resolve_boomer_from_spoken_phrase():
+def test_resolve_bot_names_and_local_compiler():
     assert resolve_agent_name("go to my boomer agent from the roster",
                               ["plsmakemoney","boomer","agromonster"]) == "boomer"
-    assert compile_local("how many agents are deployed right now", ["boomer"])["action"] == "list_roster"
+    assert compile_local("how many agents are deployed right now", ["boomer"])["action"] == "list_bots"
     assert compile_local("give him $20 more", ["boomer"], "boomer") == {
         "action":"add_cash","name":"boomer","dollars":20.0}
     assert compile_local("I think he's too passive", ["boomer"], "boomer")["direction"] == "more"
-    assert compile_local("cash out and retire this person", ["boomer"], "boomer")["action"] == "retire_agent"
-    assert compile_local("make him a direction bot", ["boomer"], "boomer")["kind"] == "trend-rider"
+    assert compile_local("cash out and retire this person", ["boomer"], "boomer")["action"] == "retire_bot"
+    assert compile_local("make him a direction bot", ["boomer"], "boomer")["kind"] == "momentum"
+    created = compile_local("Create a momentum bot called spike with $100", [])
+    assert created["action"] == "create_bot"
+    assert created["name"] == "spike"
+    assert created["template_id"] == "momentum"
+    assert created["budget"] == 100
+    assert compile_local("Why didn't spike trade?", ["spike"])["action"] == "why_not_traded"
 
 
-@pytest.mark.asyncio
-async def test_speech_backend_requires_a_key(monkeypatch, tmp_path):
+def test_fyften_defaults_fireworks_glm(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
-    for name in ("FYFTEN_STT_API_KEY", "GROQ_API_KEY", "OPENAI_API_KEY",
-                 "FYFTEN_LLM_API_KEY", "FIREWORKS_API_KEY"):
-        monkeypatch.delenv(name, raising=False)
-    assert not stt_config()["ready"]
-    with pytest.raises(ValueError, match="No speech key"):
-        await transcribe_audio(b"RIFF....", "audio/wav")
-
-
-def test_fyften_defaults_fireworks_glm_and_groq_whisper(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
-    for name in ("FYFTEN_LLM_API_KEY", "FIREWORKS_API_KEY", "GROQ_API_KEY",
-                 "FYFTEN_STT_API_KEY", "FYFTEN_LLM_BASE_URL", "FYFTEN_LLM_MODEL",
-                 "FYFTEN_STT_PROVIDER", "FYFTEN_STT_URL", "FYFTEN_STT_MODEL"):
+    for name in ("FYFTEN_LLM_API_KEY", "FIREWORKS_API_KEY", "OPENAI_API_KEY",
+                 "FYFTEN_LLM_BASE_URL", "FYFTEN_LLM_MODEL"):
         monkeypatch.delenv(name, raising=False)
     llm = llm_config()
     assert llm["base"] == "https://api.fireworks.ai/inference/v1"
     assert llm["model"] == "accounts/fireworks/models/glm-5p3-flash"
-    stt = stt_config()
-    assert stt["provider"] == "groq"
-    assert stt["model"] == "whisper-large-v3-turbo"
-    assert "groq.com" in stt["url"]
+    assert not llm["key"]
 
 
 @pytest.mark.asyncio
@@ -422,23 +419,235 @@ async def test_history_confidence_uses_brti_source_clock(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_fyfteen_fleet_inspects_funds_and_retires(tmp_path):
+async def test_fyfteen_fleet_inspects_funds_and_retires(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    for name in ("FIREWORKS_API_KEY", "FYFTEN_LLM_API_KEY", "OPENAI_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr("btc15.fleet.llm_settings",
+                        lambda: {"key": "", "base": "", "model": "local-compiler"})
     store = Store(tmp_path/"fleet.db"); await store.open()
     engine = Engine(Settings(db_path=tmp_path/"fleet.db", latency_ms=0, min_valid_btc_target=1), store)
     engine.fees_verified = True
-    await engine.create_agent("boomer","settlement",20,.03,True)
+    await engine.create_agent("boomer","late-settlement",20,.03,True)
     fleet = Fleet(engine)
     look = await fleet.chat("go to my boomer agent from the roster")
     assert look["ok"] and look["focus"] == "boomer" and "20.00" in look["reply"]
     switched = await fleet.chat("make him a direction bot")
-    assert switched["ok"] and engine.experiments["boomer"].kind == "trend-rider"
+    assert switched["ok"] and not switched.get("needs_confirm")
+    assert engine.experiments["boomer"].kind == "momentum"
     edge = await fleet.chat("what's his current edge")
-    assert "leftover" in edge["reply"].lower() or "Required leftover" in edge["reply"]
+    assert "cash" in edge["reply"].lower() or "momentum" in edge["reply"].lower()
     funded = await fleet.chat("give him $20 more")
-    assert funded["ok"] and engine.experiments["boomer"].cash == 40
+    assert funded["ok"] and not funded.get("needs_confirm")
+    assert engine.experiments["boomer"].cash == 40
     assert engine.experiments["boomer"].allocated_capital == 40
     roster = await fleet.chat("how many agents are deployed right now")
     assert "1 deployed" in roster["reply"]
     retired = await fleet.chat("cash out and retire this person")
     assert retired["ok"] and "boomer" not in engine.experiments
+    missing = await fleet.chat("create a direction bot")
+    assert not missing["ok"] and "name" in missing["reply"].lower()
+    created = await fleet.chat("Create a momentum bot called spike with $100")
+    assert created["ok"] and engine.experiments["spike"].kind == "momentum"
+    assert engine.experiments["spike"].allocated_capital == 100
     await store.close()
+
+
+@pytest.mark.asyncio
+async def test_empty_db_seeds_three_preset_jobs(tmp_path):
+    store = Store(tmp_path/"seed.db"); await store.open()
+    engine = Engine(Settings(db_path=tmp_path/"seed.db", bankroll=20, min_valid_btc_target=1), store)
+    await engine.restore_agents()
+    assert set(engine.experiments) == {"fair-value", "momentum", "late-settlement"}
+    assert engine.experiments["fair-value"].kind == "fair-value"
+    assert engine.experiments["momentum"].kind == "momentum"
+    assert engine.experiments["late-settlement"].kind == "late-settlement"
+    assert all(exp.cash == 20 for exp in engine.experiments.values())
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_snapshot_and_dossier_show_open_holdings(tmp_path):
+    store = Store(tmp_path/"own.db"); await store.open()
+    engine = Engine(Settings(db_path=tmp_path/"own.db", min_valid_btc_target=1), store)
+    await engine.create_agent("direction","momentum",20,.03,True)
+    now = time.time()
+    engine.markets["NOW"] = Market("NOW","E",100,now-10,now+100,"above")
+    engine.current = "NOW"
+    engine.books["NOW"] = OrderBook()
+    engine.books["NOW"].snapshot({"yes_dollars_fp":[[".4","20"]],"no_dollars_fp":[[".5","20"]]},1)
+    engine.brti = 101
+    await store.execute("INSERT INTO positions VALUES(?,?,?,?,?,?,0,NULL)",
+                        ("direction","OLD","yes",2,0.80,0.04))
+    await store.execute("INSERT INTO positions VALUES(?,?,?,?,?,?,0,NULL)",
+                        ("direction","NOW","no",1,0.45,0.02))
+    snap = await engine.snapshot()
+    row = next(s for s in snap["strategies"] if s["name"]=="direction")
+    assert {"YES 2.00", "NO 1.00"} <= set(row["position"].split(" + "))
+    assert {h["market_ticker"] for h in row["holdings"]} == {"OLD","NOW"}
+    dossier = await engine.agent_dossier("direction")
+    assert set(dossier["position"].split(" + ")) == set(row["position"].split(" + "))
+    assert len(dossier["holdings"]) == 2
+    await store.close()
+
+
+def test_leftover_edge_is_probability_minus_ask_fee_and_safety():
+    assert leftover_edge(.72, .64, .018, .01) == pytest.approx(.052)
+    assert leftover_edge(None, .64, .018, .01) is None
+    assert leftover_edge(.5, .5, .02, .01) == pytest.approx(-.03)
+
+
+def _book(yes_bid=.40, yes_ask=.50, size=20):
+    book = OrderBook()
+    book.snapshot({"yes_dollars_fp":[[str(yes_bid), str(size)]],
+                   "no_dollars_fp":[[str(yes_ask), str(size)]]}, 1)
+    return book
+
+
+async def _ready_engine(tmp_path, kind="fair-value", threshold=.03):
+    store = Store(tmp_path/"bots.db")
+    await store.open()
+    engine = Engine(Settings(
+        db_path=tmp_path/"bots.db", latency_ms=0, min_valid_btc_target=1,
+        cooldown_seconds=0, min_seconds_remaining=5, max_spread=.20, min_liquidity=1,
+        dollars_per_trade=10), store)
+    engine.fees_verified = True
+    await engine.create_agent("bot", kind, 100, threshold, True)
+    now = time.time()
+    market = Market("T","E",100,now-10,now+400,"above")
+    engine.markets["T"], engine.current = market, "T"
+    book = _book()
+    book.updated = now
+    engine.books["T"] = book
+    return engine, store, market, book, now
+
+
+def _x(seconds_left=400, p_terminal=.80, p_trend=.80, p_settlement=.80, spread=.10):
+    return {"seconds_left": seconds_left, "spread": spread, "p_terminal": p_terminal,
+            "p_yes": p_terminal, "p_trend": p_trend, "p_settlement": p_settlement}
+
+
+@pytest.mark.asyncio
+async def test_fair_value_buys_when_leftover_clears_and_holds_when_it_does_not(tmp_path):
+    engine, store, market, book, now = await _ready_engine(tmp_path, "fair-value", .04)
+    exp = engine.experiments["bot"]
+    await engine.decide(exp, market, book, _x(p_terminal=.80), now, False)
+    assert exp.current_action == "BUY_YES"
+    assert "Model probability 80%" in exp.reason
+    assert "Estimated edge after fees" in exp.reason
+    await engine.decide(exp, market, book, _x(p_terminal=.51, p_trend=.51, p_settlement=.51), now, False)
+    assert exp.current_action == "HOLD"
+    assert "below the required 4.0%" in exp.reason
+    await engine.decide(exp, market, book, _x(), now, True)
+    assert exp.current_action == "WAIT"
+    assert "stale" in exp.reason.lower()
+    why = await engine.why_not_traded("bot", seconds=3600)
+    labels = {row["code"]: row["n"] for row in why["counts"]}
+    assert labels.get("stale", 0) >= 1
+    assert labels.get("below-edge", 0) >= 1
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_momentum_tilts_fair_value_without_horizon_vetoes(tmp_path):
+    engine, store, market, book, now = await _ready_engine(tmp_path, "momentum", .03)
+    exp = engine.experiments["bot"]
+    assert engine.agent_probability(exp, _x(p_terminal=.50, p_trend=.90)) == pytest.approx(.72)
+    await engine.decide(exp, market, book, _x(p_terminal=.50, p_trend=.90), now, False)
+    assert exp.current_action == "BUY_YES"
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_late_settlement_waits_until_the_final_three_minutes(tmp_path):
+    engine, store, market, book, now = await _ready_engine(tmp_path, "late-settlement", .03)
+    exp = engine.experiments["bot"]
+    await engine.decide(exp, market, book, _x(seconds_left=500, p_settlement=.90), now, False)
+    assert exp.current_action == "WAIT"
+    assert "minutes remain" in exp.reason
+    await engine.decide(exp, market, book, _x(seconds_left=90, p_settlement=.90), now, False)
+    assert exp.current_action == "BUY_YES"
+    await store.close()
+
+
+@pytest.mark.asyncio
+async def test_one_bot_exception_does_not_stop_the_others(tmp_path):
+    engine, store, market, book, now = await _ready_engine(tmp_path, "fair-value")
+    await engine.create_agent("other","momentum",50,.03,True)
+    engine.brti = 101
+    engine.brti_received_ts = now
+    original = engine.decide
+    async def boom(exp, *args, **kwargs):
+        if exp.name == "bot":
+            raise RuntimeError("strategy exploded")
+        return await original(exp, *args, **kwargs)
+    engine.decide = boom
+    await engine.evaluate(now)
+    assert engine.experiments["bot"].current_action == "ERROR"
+    assert engine.experiments["other"].current_action in {"BUY_YES","BUY_NO","HOLD","WAIT"}
+    await store.close()
+
+
+def test_chatbot_tool_schemas_are_validated_and_closed():
+    names = {item["function"]["name"] for item in TOOLS}
+    assert {"list_bots","inspect_bot","create_bot","deploy_bot","pause_bot","retire_bot",
+            "add_cash","set_threshold","set_beginner_settings","update_advanced_settings",
+            "why_not_traded","explain_template","summarize_market"} <= names
+    create = next(item["function"] for item in TOOLS if item["function"]["name"]=="create_bot")
+    assert create["parameters"]["required"] == ["template_id","name","budget"]
+    assert create["parameters"]["properties"]["template_id"]["enum"] == [
+        "fair-value","momentum","late-settlement"]
+
+
+@pytest.mark.asyncio
+async def test_unknown_advanced_settings_are_rejected(tmp_path, monkeypatch):
+    monkeypatch.setattr("btc15.fleet.llm_settings",
+                        lambda: {"key": "", "base": "", "model": "local-compiler"})
+    store = Store(tmp_path/"adv.db"); await store.open()
+    engine = Engine(Settings(db_path=tmp_path/"adv.db", min_valid_btc_target=1), store)
+    await engine.create_agent("spike","fair-value",50,.03,True)
+    fleet = Fleet(engine)
+    with pytest.raises(ValueError, match="Unknown settings"):
+        await fleet._run({"action":"update_advanced_settings","name":"spike",
+                          "kelly_fraction":.4})
+    updated = await fleet._run({"action":"update_advanced_settings","name":"spike",
+                                "cooldown_seconds":45})
+    assert updated["ok"] and engine.experiments["spike"].policy["cooldown_seconds"]==45
+    await store.close()
+
+
+def test_auth_protects_reads_and_mutations(monkeypatch):
+    monkeypatch.setenv("FYFTEEN_PASSWORD", "demo-pass")
+    monkeypatch.setenv("FYFTEEN_USER", "fyfteen")
+    from fastapi import FastAPI, Request
+    from fastapi.testclient import TestClient
+    app = FastAPI()
+    auth.install(app)
+
+    @app.get("/secret")
+    def secret(request: Request):
+        auth.require_user(request)
+        return {"ok": True}
+
+    @app.post("/mutate")
+    def mutate(request: Request):
+        auth.require_user(request)
+        auth.require_csrf(request)
+        return {"ok": True}
+
+    @app.post("/login")
+    def login(request: Request):
+        assert auth.verify_login("fyfteen", "demo-pass")
+        auth.login(request, "fyfteen")
+        return {"ok": True, "csrf": auth.csrf_token(request)}
+
+    client = TestClient(app)
+    assert client.get("/secret").status_code == 401
+    assert client.post("/mutate").status_code == 401
+    login = client.post("/login")
+    assert login.status_code == 200
+    csrf = login.json()["csrf"]
+    assert client.get("/secret").status_code == 200
+    assert client.post("/mutate").status_code == 403
+    assert client.post("/mutate", headers={"X-CSRF-Token": csrf}).status_code == 200
+    assert not auth.verify_login("fyfteen", "wrong")

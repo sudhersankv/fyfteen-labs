@@ -30,7 +30,7 @@ CREATE INDEX IF NOT EXISTS ix_features_market_horizon
  ON features(market_ticker,seconds_left,id);
 CREATE TABLE IF NOT EXISTS decisions (
  id INTEGER PRIMARY KEY, experiment TEXT, market_ticker TEXT, ts REAL, action TEXT, side TEXT,
- p_yes REAL, executable_price REAL, raw_edge REAL, net_edge REAL, reason TEXT);
+ p_yes REAL, executable_price REAL, raw_edge REAL, net_edge REAL, reason TEXT, reason_code TEXT);
 CREATE TABLE IF NOT EXISTS fills (
  id INTEGER PRIMARY KEY, experiment TEXT, market_ticker TEXT, decision_ts REAL, fill_ts REAL,
  side TEXT, contracts REAL, price REAL, notional REAL, fee REAL, spread_cost REAL, latency_ms INTEGER,
@@ -83,6 +83,10 @@ class Store:
             await self.db.execute("ALTER TABLE fills ADD COLUMN fee_original REAL")
         if "execution_legs" not in columns:
             await self.db.execute("ALTER TABLE fills ADD COLUMN execution_legs TEXT")
+        decision_columns = {row[1] for row in await (
+            await self.db.execute("PRAGMA table_info(decisions)")).fetchall()}
+        if "reason_code" not in decision_columns:
+            await self.db.execute("ALTER TABLE decisions ADD COLUMN reason_code TEXT")
         feature_columns = {row[1] for row in await (
             await self.db.execute("PRAGMA table_info(features)")).fetchall()}
         additions = {

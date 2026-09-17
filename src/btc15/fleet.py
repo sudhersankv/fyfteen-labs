@@ -1,4 +1,4 @@
-"""fyfteenFleet: natural-language controller for deterministic paper bots."""
+"""FYFTEN: text chatbot that calls validated paper-bot tools."""
 
 from __future__ import annotations
 
@@ -8,50 +8,181 @@ from typing import Any
 
 import httpx
 
-from .catalog import AGENT_KINDS, OPPORTUNITY_BUCKETS, OPPORTUNITY_DEFINITION, OPPORTUNITY_FORMULA
-from .fyften_keys import llm_config, stt_config
+from .catalog import AGENT_KINDS, EDGE_FORMULA, LEGACY_KINDS, REASON_LABELS
+from .fyften_keys import llm_config
 from .fyften_prompt import FYFTEN_SYSTEM
-from .names import display_name, resolve_agent_name, slugify, suggest_name
-from .policy import normalize as normalize_policy
+from .names import display_name, resolve_agent_name, slugify
+from .policy import ADVANCED_FIELDS, normalize as normalize_policy
 
 HELP = (
-    "Say a fleet name, then a job or a cash change. "
-    "Direction trades last 6 minutes. Both agree last 4. Late closer last 3."
+    "Name a bot, then a template or a cash change. "
+    "Templates: Fair Value, Momentum, Late Settlement."
 )
 
 KIND_ALIASES = {
-    "settlement": "settlement",
-    "closer": "settlement",
-    "late": "settlement",
-    "late closer": "settlement",
-    "settlement closer": "settlement",
-    "settlement misprice": "settlement",
-    "trend": "trend-rider",
-    "trend-rider": "trend-rider",
-    "confirmed trend": "trend-rider",
-    "short trend": "trend-rider",
-    "direction": "trend-rider",
-    "hybrid": "hybrid",
-    "agreement": "hybrid",
-    "balanced hybrid": "hybrid",
-    "both": "hybrid",
-    "both agree": "hybrid",
-}
-
-TEMPLATE_ALIASES = {
-    "settlement": "settlement-careful",
-    "settlement-careful": "settlement-careful",
-    "closer": "settlement-careful",
-    "trend": "trend-confirmed",
-    "trend-rider": "trend-confirmed",
-    "trend-confirmed": "trend-confirmed",
-    "hybrid": "hybrid-balanced",
-    "hybrid-balanced": "hybrid-balanced",
-    "agreement": "hybrid-balanced",
+    "fair value": "fair-value",
+    "fair-value": "fair-value",
+    "fair": "fair-value",
+    "momentum": "momentum",
+    "trend": "momentum",
+    "direction": "momentum",
+    "late settlement": "late-settlement",
+    "late-settlement": "late-settlement",
+    "settlement": "late-settlement",
+    "late": "late-settlement",
+    "closer": "late-settlement",
+    "hybrid": "fair-value",
+    "both agree": "fair-value",
 }
 
 MONEY_RE = r"\$?\s*(\d+(?:\.\d+)?)"
 CENTS_RE = r"(\d+(?:\.\d+)?)\s*(?:c|¢|cent|cents|%)"
+
+READ_TOOLS = {
+    "list_bots", "list_roster", "inspect_bot", "inspect_agent",
+    "list_templates", "explain_template", "explain_opportunities",
+    "summarize_market", "summarize_bot", "why_not_traded", "summarize_best",
+}
+
+TOOLS = [
+    {"type": "function", "function": {
+        "name": "list_bots",
+        "description": "List paper bots, cash, template, position, and deploy state.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
+        "name": "inspect_bot",
+        "description": "Inspect one bot: template, cash, position, last reason, leftover edge.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"}}, "required": ["name"]},
+    }},
+    {"type": "function", "function": {
+        "name": "list_templates",
+        "description": "Show Fair Value, Momentum, and Late Settlement templates.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
+        "name": "explain_template",
+        "description": "Explain one template in plain English.",
+        "parameters": {"type": "object", "properties": {
+            "template_id": {"type": "string",
+                            "enum": ["fair-value", "momentum", "late-settlement"]}},
+            "required": ["template_id"]},
+    }},
+    {"type": "function", "function": {
+        "name": "create_bot",
+        "description": "Create a paper bot from a template.",
+        "parameters": {"type": "object", "properties": {
+            "template_id": {"type": "string",
+                            "enum": ["fair-value", "momentum", "late-settlement"]},
+            "name": {"type": "string"},
+            "budget": {"type": "number"},
+            "deployed": {"type": "boolean"},
+            "threshold": {"type": "number"},
+        }, "required": ["template_id", "name", "budget"]},
+    }},
+    {"type": "function", "function": {
+        "name": "assign_template",
+        "description": "Switch a bot to Fair Value, Momentum, or Late Settlement.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"},
+            "template_id": {"type": "string",
+                            "enum": ["fair-value", "momentum", "late-settlement"]}},
+            "required": ["name", "template_id"]},
+    }},
+    {"type": "function", "function": {
+        "name": "add_cash",
+        "description": "Add simulated cash to a bot.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"}, "dollars": {"type": "number"}},
+            "required": ["name", "dollars"]},
+    }},
+    {"type": "function", "function": {
+        "name": "set_budget",
+        "description": "Set a bot's allocated paper budget.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"}, "budget": {"type": "number"}},
+            "required": ["name", "budget"]},
+    }},
+    {"type": "function", "function": {
+        "name": "set_threshold",
+        "description": "Set minimum leftover edge as a fraction (0.04 = 4%).",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"}, "threshold": {"type": "number"}},
+            "required": ["name", "threshold"]},
+    }},
+    {"type": "function", "function": {
+        "name": "set_beginner_settings",
+        "description": "Change beginner settings: min edge, max order, max exposure.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"},
+            "threshold": {"type": "number"},
+            "max_order_dollars": {"type": "number"},
+            "max_market_exposure": {"type": "number"}},
+            "required": ["name"]},
+    }},
+    {"type": "function", "function": {
+        "name": "update_advanced_settings",
+        "description": "Update known advanced policy fields only. Unknown keys are rejected.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"},
+            "entry_start_seconds": {"type": "number"},
+            "entry_stop_seconds": {"type": "number"},
+            "max_spread": {"type": "number"},
+            "min_liquidity": {"type": "number"},
+            "cooldown_seconds": {"type": "number"},
+            "max_entries_per_market": {"type": "number"},
+            "max_total_exposure": {"type": "number"},
+            "capital_fraction": {"type": "number"},
+            "exit_edge": {"type": "number"}},
+            "required": ["name"]},
+    }},
+    {"type": "function", "function": {
+        "name": "deploy_bot",
+        "description": "Deploy a paused bot so it can buy again.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"}}, "required": ["name"]},
+    }},
+    {"type": "function", "function": {
+        "name": "pause_bot",
+        "description": "Pause a bot. Open positions still settle.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"}}, "required": ["name"]},
+    }},
+    {"type": "function", "function": {
+        "name": "pause_all",
+        "description": "Pause every paper bot.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
+        "name": "retire_bot",
+        "description": "Cash out and retire a bot. History stays.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"}}, "required": ["name"]},
+    }},
+    {"type": "function", "function": {
+        "name": "why_not_traded",
+        "description": "Count recent HOLD/WAIT reasons for one bot.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"}}, "required": ["name"]},
+    }},
+    {"type": "function", "function": {
+        "name": "summarize_bot",
+        "description": "Summarize a bot's cash, P&L, trades, and last reason.",
+        "parameters": {"type": "object", "properties": {
+            "name": {"type": "string"}}, "required": ["name"]},
+    }},
+    {"type": "function", "function": {
+        "name": "summarize_best",
+        "description": "Summarize the paper bot with the highest closed P&L.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+    {"type": "function", "function": {
+        "name": "summarize_market",
+        "description": "Summarize the current BTC15 market: target, time, YES/NO, BRTI.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
+]
 
 
 def llm_settings() -> dict[str, str]:
@@ -77,18 +208,12 @@ def _tool_args(raw) -> dict[str, Any]:
 
 def _kind_from_text(text: str) -> str | None:
     match = re.search(
-        r"\b(late closer|settlement closer|settlement misprice|confirmed trend|"
-        r"short trend|balanced hybrid|both agree|trend-rider|settlement|closer|"
-        r"direction|late|trend|hybrid|agreement|both)\b",
+        r"\b(late settlement|fair value|fair-value|late-settlement|"
+        r"momentum|direction|settlement|closer|trend|fair|late|hybrid|both agree)\b",
         text)
     if not match:
         return None
-    return KIND_ALIASES[match.group(1)]
-
-
-def _template_for(kind: str) -> str:
-    return {"settlement": "settlement-careful", "trend-rider": "trend-confirmed",
-            "hybrid": "hybrid-balanced"}[kind]
+    return KIND_ALIASES.get(match.group(1))
 
 
 def _money(text: str) -> float | None:
@@ -104,105 +229,38 @@ def _cents(text: str) -> float | None:
     return None
 
 
-TOOLS = [
-    {"type": "function", "function": {
-        "name": "list_roster",
-        "description": "List paper agents, cash, leftover, and deploy state.",
-        "parameters": {"type": "object", "properties": {}},
-    }},
-    {"type": "function", "function": {
-        "name": "inspect_agent",
-        "description": "Inspect one agent: leftover, required edge, cash, bank, position, waiting reason.",
-        "parameters": {"type": "object", "properties": {
-            "name": {"type": "string"}}, "required": ["name"]},
-    }},
-    {"type": "function", "function": {
-        "name": "create_agent",
-        "description": "Create a paper bot from a named template.",
-        "parameters": {"type": "object", "properties": {
-            "template_id": {"type": "string",
-                            "enum": ["settlement-careful", "trend-confirmed", "hybrid-balanced"]},
-            "name": {"type": "string"},
-            "budget": {"type": "number"},
-            "deployed": {"type": "boolean"},
-            "threshold": {"type": "number"},
-        }, "required": ["template_id", "budget"]},
-    }},
-    {"type": "function", "function": {
-        "name": "set_threshold",
-        "description": "Set required leftover edge as a fraction (0.03 = 3 cents).",
-        "parameters": {"type": "object", "properties": {
-            "name": {"type": "string"}, "threshold": {"type": "number"}},
-            "required": ["name", "threshold"]},
-    }},
-    {"type": "function", "function": {
-        "name": "nudge_aggression",
-        "description": "Make a bot a little more or less aggressive without rewriting its bucket.",
-        "parameters": {"type": "object", "properties": {
-            "name": {"type": "string"},
-            "direction": {"type": "string", "enum": ["more", "less"]}},
-            "required": ["name", "direction"]},
-    }},
-    {"type": "function", "function": {
-        "name": "add_cash",
-        "description": "Add paper cash to an isolated agent account.",
-        "parameters": {"type": "object", "properties": {
-            "name": {"type": "string"}, "dollars": {"type": "number"}},
-            "required": ["name", "dollars"]},
-    }},
-    {"type": "function", "function": {
-        "name": "set_budget",
-        "description": "Set the agent's allocated paper budget.",
-        "parameters": {"type": "object", "properties": {
-            "name": {"type": "string"}, "budget": {"type": "number"}},
-            "required": ["name", "budget"]},
-    }},
-    {"type": "function", "function": {
-        "name": "deploy_agent",
-        "description": "Deploy or pause an agent. Pause stops new buys.",
-        "parameters": {"type": "object", "properties": {
-            "name": {"type": "string"},
-            "deployed": {"type": "boolean"}}, "required": ["name", "deployed"]},
-    }},
-    {"type": "function", "function": {
-        "name": "retire_agent",
-        "description": "Cash out any open paper position and retire the agent.",
-        "parameters": {"type": "object", "properties": {
-            "name": {"type": "string"}}, "required": ["name"]},
-    }},
-    {"type": "function", "function": {
-        "name": "assign_job",
-        "description": "Change an agent's job. Direction trades most. Both agree is pickier. Late closer waits until the last 3 minutes.",
-        "parameters": {"type": "object", "properties": {
-            "name": {"type": "string"},
-            "template_id": {"type": "string",
-                            "enum": ["trend-confirmed", "hybrid-balanced", "settlement-careful"]},
-            "kind": {"type": "string", "enum": ["trend-rider", "hybrid", "settlement"]}},
-            "required": ["name"]},
-    }},
-    {"type": "function", "function": {
-        "name": "explain_opportunities",
-        "description": "Explain leftover edge and the three jobs in plain English.",
-        "parameters": {"type": "object", "properties": {}},
-    }},
-]
+def _alias(action: str) -> str:
+    return {
+        "list_roster": "list_bots",
+        "inspect_agent": "inspect_bot",
+        "create_agent": "create_bot",
+        "assign_job": "assign_template",
+        "deploy_agent": "deploy_bot",
+        "retire_agent": "retire_bot",
+        "explain_opportunities": "list_templates",
+        "nudge_aggression": "set_threshold",
+        "change_template": "assign_template",
+        "update_settings": "update_advanced_settings",
+        "summarize_best": "summarize_best",
+    }.get(action, action)
 
 
-SYSTEM = FYFTEN_SYSTEM
+def _md(title: str, items: list[str]) -> str:
+    lines = [f"**{title}**"] if title else []
+    lines.extend(f"- {item}" for item in items if item)
+    return "\n".join(lines)
 
 
 class Fleet:
-    def __init__(self, engine: Any) -> None:
+    def __init__(self, engine):
         self.engine = engine
         self.messages: list[dict[str, str]] = []
         self.focus: str | None = None
 
     def status(self) -> dict[str, Any]:
         llm = llm_settings()
-        stt = stt_config()
-        return {"name": "FYFTEN", "focus": self.focus,
-                "llm": bool(llm["key"]), "model": llm["model"] if llm["key"] else "local-compiler",
-                "stt": stt["ready"], "stt_provider": stt["provider"]}
+        return {"name": "FYFTEN", "focus": self.focus, "llm": bool(llm["key"]),
+                "model": llm["model"] if llm["key"] else "local-compiler"}
 
     def _names(self) -> list[str]:
         return list(self.engine.experiments)
@@ -225,7 +283,7 @@ class Fleet:
                 return {"ok": True, "reply": "FYFTEN focus cleared.",
                         "help": HELP, "focus": None, "source": "local", "actions": []}
         if not raw:
-            return {"ok": False, "reply": "Tap 15 and talk.",
+            return {"ok": False, "reply": "Type a message to 15.",
                     "help": HELP, "focus": self.focus, "source": "local", "actions": []}
         self.messages.append({"role": "user", "content": raw})
         command = compile_local(raw, self._names(), self.focus)
@@ -248,6 +306,14 @@ class Fleet:
             self.messages.append({"role": "assistant", "content": reply})
             return {"ok": False, "reply": reply, "help": HELP, "focus": self.focus,
                     "source": source, "actions": []}
+        missing = _missing_args(command, self._names(), self.focus)
+        if missing:
+            self.messages.append({"role": "assistant", "content": missing})
+            return {"ok": False, "reply": missing, "help": HELP, "focus": self.focus,
+                    "source": source, "actions": [command]}
+        return await self._execute(command, source)
+
+    async def _execute(self, command: dict[str, Any], source: str) -> dict[str, Any]:
         try:
             result = await self._run(command)
         except ValueError as exc:
@@ -272,9 +338,9 @@ class Fleet:
             "tools": TOOLS,
             "tool_choice": "auto",
             "messages": [
-                {"role": "system", "content": SYSTEM},
+                {"role": "system", "content": FYFTEN_SYSTEM},
                 {"role": "system", "content": (
-                    f"Focused agent: {self.focus or 'none'}. "
+                    f"Focused bot: {self.focus or 'none'}. "
                     f"Roster: {json.dumps(snapshot, default=str)}")},
                 *self.messages[-8:],
             ],
@@ -317,227 +383,336 @@ class Fleet:
         rows = []
         for exp in self.engine.experiments.values():
             row = live.get(exp.name, {})
+            settled = await self.engine.store.one(
+                """SELECT COUNT(*) trades, COALESCE(SUM(pnl),0) net_pnl
+                   FROM closed_trades WHERE experiment=?""", (exp.name,))
             rows.append({
                 "name": exp.name, "display_name": display_name(exp.name),
-                "kind": exp.kind, "deployed": exp.deployed, "cash": exp.cash,
+                "kind": exp.kind, "template": AGENT_KINDS.get(exp.kind, {}).get("title", exp.kind),
+                "deployed": exp.deployed, "cash": exp.cash,
                 "allocated_capital": exp.allocated_capital, "bank": exp.bank,
                 "threshold": exp.threshold, "leftover": row.get("net_edge"),
                 "waiting_for": row.get("waiting_for") or exp.waiting_for,
                 "position": row.get("position") or "FLAT",
-                "action": exp.current_action,
+                "reason": exp.reason, "action": exp.current_action,
+                "trades": (settled or {}).get("trades") or 0,
+                "net_pnl": (settled or {}).get("net_pnl") or 0,
             })
         return rows
 
     async def _inspect(self, name: str) -> dict[str, Any]:
         exp = self.engine.experiments.get(name)
         if not exp:
-            raise ValueError(f"No active agent named {name}.")
+            raise ValueError(f"No active bot named {name}.")
         brief = next((row for row in await self._roster_brief() if row["name"] == name), {})
-        leftover = brief.get("leftover")
-        waiting = brief.get("waiting_for")
-        leftover_txt = "waiting" if waiting else (
-            f"{(leftover or 0)*100:.1f}¢ leftover" if leftover is not None else "no leftover yet")
-        reply = (
-            f"{display_name(name)} is a {AGENT_KINDS.get(exp.kind, {}).get('title', exp.kind)} "
-            f"{'deployed' if exp.deployed else 'paused'} on the roster. "
-            f"Cash ${exp.cash:.2f}, allocated ${exp.allocated_capital:.2f}, bank ${exp.bank:.2f}. "
-            f"Required leftover {exp.threshold*100:.1f}¢. Current {leftover_txt}. "
-            f"Position {brief.get('position') or 'FLAT'}."
-        )
-        if waiting:
-            reply += f" {waiting}"
+        title = AGENT_KINDS.get(exp.kind, {}).get("title", exp.kind)
+        owns = brief.get("position") or "FLAT"
+        reply = _md(display_name(name), [
+            f"**{title}** · {'deployed' if exp.deployed else 'paused'}",
+            f"Cash **${exp.cash:.2f}** · allocated **${exp.allocated_capital:.2f}**",
+            f"Owns **{owns}**",
+            f"Last: {exp.reason}",
+        ])
         return {"name": name, "reply": reply, **brief, "policy": exp.policy}
 
-    async def _nudge(self, name: str, direction: str) -> dict[str, Any]:
-        exp = self.engine.experiments[name]
-        more = direction != "less"
-        step = -0.005 if more else 0.005
-        threshold = min(0.20, max(0.005, round(exp.threshold + step, 3)))
-        policy = dict(exp.policy)
-        policy["min_confidence"] = min(0.95, max(0.10, policy["min_confidence"] + (-0.05 if more else 0.05)))
-        policy["uncertainty_penalty"] = min(2.0, max(0.0, policy["uncertainty_penalty"] + (-0.15 if more else 0.15)))
-        policy["cooldown_seconds"] = min(300, max(0, policy["cooldown_seconds"] + (-10 if more else 10)))
-        policy["fractional_kelly"] = min(0.50, max(0.05, policy["fractional_kelly"] + (0.05 if more else -0.05)))
-        if exp.kind != "settlement":
-            policy["entry_start_seconds"] = min(900, max(60, policy["entry_start_seconds"] + (30 if more else -30)))
-        policy = normalize_policy(policy, self.engine.s)
-        await self.engine.control_agent(name, "threshold", threshold=threshold)
-        result = await self.engine.control_agent(name, "policy", policy=policy)
-        result["reply"] = (
-            f"{'More' if more else 'Less'} aggressive on {display_name(name)}. "
-            f"Required leftover is now {threshold*100:.1f}¢ "
-            f"(was {exp.threshold*100:.1f}¢). Bucket is unchanged.")
-        result["name"] = name
-        result["threshold"] = threshold
-        return result
-
     async def _run(self, command: dict[str, Any]) -> dict[str, Any]:
-        action = command["action"]
+        action = _alias(command.get("action") or "")
         name = self._resolve(command.get("name"), command.get("name"))
-        if action == "list_roster":
+        if action == "list_bots":
             rows = await self._roster_brief()
             deployed = [row for row in rows if row["deployed"]]
             if not rows:
-                return {"reply": "The fleet is empty. Open Fleet and pick a job, or tell me to create a Direction bot."}
-            lines = []
-            for row in rows:
-                leftover = "waiting" if row["waiting_for"] else f"{(row.get('leftover') or 0)*100:.1f}¢"
-                lines.append(
-                    f"{row['display_name']} · {'deployed' if row['deployed'] else 'paused'} · "
-                    f"${row['cash']:.2f} cash · leftover {leftover}")
-            return {"reply": (
-                f"{len(rows)} in the fleet, {len(deployed)} deployed. "
-                + " ".join(lines))}
-        if action == "explain_opportunities":
-            buckets = "; ".join(f"{b['plain_name']} ({b['window']})" for b in OPPORTUNITY_BUCKETS)
-            return {"reply": f"{OPPORTUNITY_DEFINITION} {OPPORTUNITY_FORMULA}. Named buckets: {buckets}."}
-        if action == "create_agent":
-            catalog = {item["id"]: item for item in self.engine.catalog()["templates"]}
-            template_id = command.get("template_id") or TEMPLATE_ALIASES.get(
-                command.get("kind") or "", "trend-confirmed")
-            template = catalog.get(template_id)
+                return {"reply": _md("Fleet", ["No bots yet. Create a Fair Value bot to start."])}
+            noun = "bot" if len(rows) == 1 else "bots"
+            items = [
+                f"**{row['display_name']}** · {row['template']} · "
+                f"{'deployed' if row['deployed'] else 'paused'} · "
+                f"cash **${row['cash']:.2f}** · P&L **{row['net_pnl']:+.2f}** · owns {row['position']}"
+                for row in rows]
+            return {"reply": _md(f"Fleet — {len(rows)} {noun}, {len(deployed)} deployed", items)}
+        if action == "summarize_best":
+            rows = await self._roster_brief()
+            if not rows:
+                return {"reply": _md("Fleet", ["No bots yet."])}
+            best = max(rows, key=lambda row: (row.get("net_pnl") or 0, row.get("cash") or 0))
+            return await self._run({"action": "summarize_bot", "name": best["name"]})
+        if action == "list_templates":
+            return {"reply": _md("Templates", [
+                f"**{meta['title']}** — {meta['summary']}" for meta in AGENT_KINDS.values()
+            ] + [f"Edge: `{EDGE_FORMULA}`"])}
+        if action == "explain_template":
+            kind = LEGACY_KINDS.get(command.get("template_id") or command.get("kind") or "", "")
+            meta = AGENT_KINDS.get(kind)
+            if not meta:
+                raise ValueError("Unknown template. Use Fair Value, Momentum, or Late Settlement.")
+            return {"reply": _md(meta["title"], [
+                meta["summary"],
+                f"When: {meta['when']}",
+                f"Risk: {meta['risk']}",
+            ])}
+        if action == "summarize_market":
+            snap = await self.engine.snapshot()
+            market = snap.get("market") or {}
+            feat = snap.get("features") or {}
+            book = snap.get("book") or {}
+            def _px(value):
+                return "—" if value is None else f"{100 * float(value):.1f}¢"
+            brti = feat.get("brti")
+            target = market.get("target")
+            return {"reply": _md(str(market.get("ticker") or "No live market"), [
+                f"BRTI **{brti:,.2f}** · target **{target:,.2f}**"
+                if isinstance(brti, (int, float)) and isinstance(target, (int, float))
+                else f"BRTI **{brti or '—'}** · target **{target or '—'}**",
+                f"**{(feat.get('seconds_left') or 0):.0f}s** left",
+                f"YES {_px(book.get('yes_bid'))} / {_px(book.get('yes_ask'))}",
+                f"NO {_px(book.get('no_bid'))} / {_px(book.get('no_ask'))}",
+            ])}
+        if action == "create_bot":
+            kind = LEGACY_KINDS.get(command.get("template_id") or command.get("kind") or "", "fair-value")
+            template = next((item for item in self.engine.catalog()["templates"]
+                             if item["kind"] == kind), None)
             if not template:
                 raise ValueError("Unknown bot template")
-            slug = slugify(command.get("name") or "") or suggest_name(self._names())
+            slug = slugify(command.get("name") or "")
+            if not slug:
+                raise ValueError("What should we name it?")
+            if command.get("budget") is None:
+                raise ValueError("What paper budget should it start with?")
             result = await self.engine.create_agent(
-                slug, template["kind"], float(command.get("budget") or 20),
+                slug, template["kind"], float(command["budget"]),
                 float(command["threshold"]) if command.get("threshold") is not None else template["threshold"],
                 bool(command.get("deployed", True)), template["policy"])
-            result["reply"] = (
-                f"Created {display_name(result['name'])} from {template['title']} "
-                f"with ${result['allocated_capital']:g}. "
-                f"{'Deployed' if result['deployed'] else 'Paused'}.")
+            result["reply"] = _md(display_name(result["name"]), [
+                f"Running **{template['title']}**",
+                f"**${result['allocated_capital']:g}** simulated funds",
+                "Deployed" if result.get("deployed") else "Created paused",
+            ])
             return result
+        if action == "pause_all":
+            paused = []
+            for exp in list(self.engine.experiments.values()):
+                if exp.deployed:
+                    await self.engine.control_agent(exp.name, "pause")
+                    paused.append(exp.name)
+            return {"reply": _md("Fleet", [
+                "Paused " + ", ".join(f"**{display_name(n)}**" for n in paused)
+                if paused else "Every bot is already paused."
+            ])}
         if not name:
-            raise ValueError("Which agent? Name one from the roster.")
+            raise ValueError("Which bot? Name one from the roster.")
         self.focus = name
-        if action == "inspect_agent":
+        if action == "inspect_bot":
             return await self._inspect(name)
-        if action == "assign_job":
-            result = await self.engine.assign_job(
-                name, kind=command.get("kind"), template_id=command.get("template_id"))
+        if action == "why_not_traded":
+            why = await self.engine.why_not_traded(name)
+            if not why["counts"]:
+                return {"name": name, "reply": _md(display_name(name), [
+                    "No recent HOLD/WAIT decisions yet."]), "why_not": why}
+            items = [f"**{row['label']}** — {row['n']}" for row in why["counts"]]
+            return {"name": name, "why_not": why,
+                    "reply": _md(f"{display_name(name)} — last 15 minutes", items)}
+        if action == "summarize_bot":
+            dossier = await self.engine.agent_dossier(name)
+            stats = dossier.get("stats") or {}
+            return {"name": name, "reply": _md(display_name(name), [
+                f"**{dossier['guide']['title']}**",
+                f"Cash **${dossier['cash']:.2f}** · P&L **{stats.get('net_pnl', 0):+.2f}**",
+                f"{stats.get('settled', 0)} settled trades · owns {dossier.get('position')}",
+                f"Last: {dossier.get('reason')}",
+            ])}
+        if action == "assign_template":
+            kind = command.get("kind") or command.get("template_id")
+            result = await self.engine.assign_job(name, kind=kind, template_id=command.get("template_id") or kind)
+            result["reply"] = _md(display_name(name), [
+                f"Now running **{result.get('job') or result.get('kind')}**",
+                f"Min edge **{result['threshold']:.1%}**",
+            ])
             return result
-        if action == "nudge_aggression":
-            return await self._nudge(name, command.get("direction") or "more")
         if action == "add_cash":
             result = await self.engine.control_agent(
                 name, "add_cash", delta=float(command.get("dollars") or command.get("delta") or 0))
-            result["reply"] = (
-                f"Added paper cash to {display_name(name)}. "
-                f"Cash is now ${result['cash']:.2f}, allocated ${result['allocated_capital']:.2f}.")
+            result["reply"] = _md(display_name(name), [
+                f"Added paper cash. Cash is now **${result['cash']:.2f}**.",
+            ])
             return result
         if action == "set_budget":
-            result = await self.engine.control_agent(
-                name, "budget", budget=float(command["budget"]))
-            result["reply"] = f"{display_name(name)} budget is ${result['allocated_capital']:.2f}."
+            result = await self.engine.control_agent(name, "budget", budget=float(command["budget"]))
+            result["reply"] = _md(display_name(name), [
+                f"Allocated budget is **${result['allocated_capital']:.2f}**.",
+            ])
             return result
         if action == "set_threshold":
+            if command.get("direction") and command.get("threshold") is None:
+                step = -0.005 if command["direction"] == "more" else 0.005
+                command["threshold"] = min(0.20, max(0.005, round(
+                    self.engine.experiments[name].threshold + step, 3)))
             result = await self.engine.control_agent(
                 name, "threshold", threshold=float(command["threshold"]))
-            result["reply"] = (
-                f"{display_name(name)} now needs {result['threshold']*100:.1f}¢ leftover.")
+            result["reply"] = _md(display_name(name), [
+                f"Minimum edge is now **{result['threshold']:.1%}**.",
+            ])
             return result
-        if action == "deploy_agent":
-            verb = "deploy" if command.get("deployed", True) else "pause"
-            result = await self.engine.control_agent(name, verb)
-            result["reply"] = f"{display_name(name)} is {result['status']}."
+        if action == "set_beginner_settings":
+            exp = self.engine.experiments[name]
+            policy = dict(exp.policy)
+            if command.get("max_order_dollars") is not None:
+                policy["max_order_dollars"] = float(command["max_order_dollars"])
+            if command.get("max_market_exposure") is not None:
+                policy["max_market_exposure"] = float(command["max_market_exposure"])
+                policy["max_total_exposure"] = max(policy["max_total_exposure"],
+                                                   policy["max_market_exposure"])
+            policy = normalize_policy(policy, self.engine.s)
+            result = await self.engine.control_agent(name, "policy", policy=policy)
+            if command.get("threshold") is not None:
+                result = await self.engine.control_agent(
+                    name, "threshold", threshold=float(command["threshold"]))
+            result["reply"] = _md(display_name(name), ["Updated beginner settings."])
             return result
-        if action == "retire_agent":
+        if action == "update_advanced_settings":
+            allowed = {field["id"] for field in ADVANCED_FIELDS}
+            unknown = [key for key in command if key not in {"action", "name"} and key not in allowed]
+            if unknown:
+                raise ValueError(f"Unknown settings: {', '.join(unknown)}")
+            exp = self.engine.experiments[name]
+            policy = dict(exp.policy)
+            changed = False
+            for key in allowed:
+                if command.get(key) is not None:
+                    policy[key] = float(command[key])
+                    changed = True
+            if not changed:
+                raise ValueError("No advanced settings were provided.")
+            policy = normalize_policy(policy, self.engine.s)
+            result = await self.engine.control_agent(name, "policy", policy=policy)
+            result["reply"] = _md(display_name(name), ["Updated advanced settings."])
+            return result
+        if action == "deploy_bot":
+            result = await self.engine.control_agent(name, "deploy")
+            result["reply"] = _md(display_name(name), ["Deployed. It can buy again."])
+            return result
+        if action == "pause_bot":
+            result = await self.engine.control_agent(name, "pause")
+            result["reply"] = _md(display_name(name), [
+                "Paused. Open positions still settle.",
+            ])
+            return result
+        if action == "retire_bot":
             result = await self.engine.control_agent(name, "retire", flatten=True)
-            self.focus = None
-            result["reply"] = (
-                f"Cashed out and retired {display_name(name)}. "
-                f"Historical trades stay on Analytics.")
+            result["reply"] = _md(display_name(name), ["Retired. History stays."])
             return result
-        raise ValueError("FYFTEN does not know that control.")
+        raise ValueError("FYFTEN does not have that tool.")
+
+
+def _missing_args(command: dict[str, Any], names: list[str], focus: str | None) -> str | None:
+    action = _alias(command.get("action") or "")
+    if action in READ_TOOLS | {"summarize_best"} and action not in {
+            "inspect_bot", "why_not_traded", "summarize_bot", "explain_template"}:
+        return None
+    if action == "create_bot":
+        if not slugify(command.get("name") or ""):
+            return "What should we name it?"
+        if not command.get("template_id") and not command.get("kind"):
+            return "Which template: Fair Value, Momentum, or Late Settlement?"
+        if command.get("budget") is None:
+            return "What paper budget should it start with?"
+        return None
+    if action == "explain_template" and not command.get("template_id") and not command.get("kind"):
+        return "Which template should I explain?"
+    if action == "pause_all":
+        return None
+    target = command.get("name") or (focus if focus in names else None)
+    if action not in READ_TOOLS | {"create_bot", "pause_all", "list_templates"} and not target:
+        return "Which bot on the roster?"
+    if action == "add_cash" and not (command.get("dollars") or command.get("delta")):
+        return "How many paper dollars should I add?"
+    if action == "set_budget" and command.get("budget") is None:
+        return "What should the allocated paper budget be?"
+    if action == "set_threshold" and command.get("threshold") is None and not command.get("direction"):
+        return "What leftover threshold, as a percent?"
+    if action == "assign_template" and not command.get("kind") and not command.get("template_id"):
+        return "Which template: Fair Value, Momentum, or Late Settlement?"
+    return None
 
 
 def compile_local(text: str, names: list[str], focus: str | None = None) -> dict[str, Any]:
     lowered = re.sub(r"\s+", " ", (text or "").strip().lower())
     if not lowered:
-        return {"error": "Say a command.", "help": HELP}
+        return {"error": "Type a command.", "help": HELP}
 
-    if re.search(r"\b(what is an opportunity|opportunit|leftover =|named bucket)\b", lowered):
-        return {"action": "explain_opportunities"}
+    if re.search(r"\b(what is an opportunity|templates?|fair value|late settlement)\b", lowered) and re.search(
+            r"\b(explain|what is|show|list)\b", lowered):
+        kind = _kind_from_text(lowered)
+        if kind:
+            return {"action": "explain_template", "template_id": kind}
+        return {"action": "list_templates"}
 
-    listing = re.search(
-        r"\b(how many|list (the )?(agents|bots|roster)|who is (running|deployed)|deployed now|how many are)\b",
-        lowered)
-    going = re.search(r"\b(go to|open|look at|inspect|check|use)\b", lowered)
-    if listing and not going:
-        return {"action": "list_roster"}
+    if re.search(r"\b(how many|list (the )?(agents|bots|roster)|who is (running|deployed))\b", lowered):
+        return {"action": "list_bots"}
+    if re.search(r"\bbest[- ]performing\b", lowered):
+        return {"action": "summarize_best"}
+    if re.search(r"\b(summarize|current) (the )?(market|contract)\b", lowered) or re.search(
+            r"\bwhat('?s| is) the market\b", lowered):
+        return {"action": "summarize_market"}
+    if re.search(r"\bpause all\b", lowered):
+        return {"action": "pause_all"}
 
-    target = resolve_agent_name(lowered, names) or (
-        focus if focus in names else None)
+    target = resolve_agent_name(lowered, names) or (focus if focus in names else None)
     if not target and len(names) == 1 and re.search(r"\b(him|her|this|that)\b", lowered):
         target = names[0]
     job = _kind_from_text(lowered)
     if job and target and re.search(
-            r"\b(job|put|switch|assign|change|make him|make her|make this|"
-            r"on direction|to direction|to late|to both)\b", lowered):
-        return {"action": "assign_job", "name": target, "kind": job,
-                "template_id": _template_for(job)}
+            r"\b(job|put|switch|assign|change|make him|make her|make this|template)\b", lowered):
+        return {"action": "assign_template", "name": target, "kind": job, "template_id": job}
 
     create = re.search(
-        r"\b(create|spin up|new)\b.*\b(bot|agent|closer|trend|hybrid|settlement|agreement|direction)\b",
+        r"\b(create|spin up|new)\b.*\b(bot|agent|fair|momentum|settlement|direction)\b",
         lowered)
     if create and not re.search(r"\b(add|give)\b.*\$", lowered):
-        kind = job or "trend-rider"
         named = re.search(r"(?:named|called|name)\s+([a-z0-9][a-z0-9-]{1,31})", lowered)
-        return {"action": "create_agent", "template_id": _template_for(kind),
-                "kind": kind, "budget": _money(lowered) or 20.0,
-                "deployed": not bool(re.search(r"\bpaused?\b", lowered)),
-                "name": named.group(1) if named else None,
-                "threshold": _cents(lowered)}
+        command = {"action": "create_bot", "budget": _money(lowered),
+                   "deployed": not bool(re.search(r"\bpaused?\b", lowered)),
+                   "name": named.group(1) if named else None,
+                   "threshold": _cents(lowered)}
+        if job:
+            command["kind"] = job
+            command["template_id"] = job
+        return command
 
-    go = re.search(r"\b(go to|open|look at|inspect|check|use)\b", lowered)
     if re.search(r"\b(retire|cash out|cash-out|cashout|shut down|remove)\b", lowered):
         if not target:
-            return {"error": "Which agent should be cashed out and retired?"}
-        return {"action": "retire_agent", "name": target}
+            return {"error": "Which bot should be cashed out and retired?"}
+        return {"action": "retire_bot", "name": target}
 
-    if go and target and re.search(
-            r"\b(edge|leftover|cash|balance|budget|how much|position|status|doing)\b",
-            lowered) is None and not re.search(
-            r"\b(aggressive|passive|retire|pause|deploy|give|add|change)\b", lowered):
-        return {"action": "inspect_agent", "name": target}
-
-    if re.search(r"\b(edge|leftover|cash|balance|budget|how much|position|status)\b", lowered) and not re.search(
-            r"\b(cash out|cash-out|cashout)\b", lowered):
-        if re.search(r"\b(set|change|move|drop|raise|lower)\b", lowered) and (
-                "edge" in lowered or "leftover" in lowered):
-            if not target:
-                return {"error": "Which agent should change leftover?"}
-            amount = _cents(lowered)
-            if amount is None:
-                return {"action": "nudge_aggression", "name": target,
-                        "direction": "less" if re.search(r"\b(up|higher|pickier|passive)\b", lowered) else "more"}
-            return {"action": "set_threshold", "name": target, "threshold": amount}
+    if re.search(r"\bwhy (didn'?t|did not|isn'?t|is not)\b", lowered) or re.search(
+            r"\bwhy didn'?t .{0,40} trade\b", lowered):
         if not target:
-            return {"error": "Which agent? Name one from the roster."}
-        return {"action": "inspect_agent", "name": target}
+            return {"error": "Which bot should I diagnose?"}
+        return {"action": "why_not_traded", "name": target}
 
-    if re.search(r"\b(more aggressive|less passive|too passive|a little more|change (the )?(edge|date) a little)\b", lowered):
+    if re.search(r"\b(go to|open|look at|inspect|check|use)\b", lowered) and target:
+        return {"action": "inspect_bot", "name": target}
+
+    if re.search(r"\b(more aggressive|less passive|too passive)\b", lowered):
         if not target:
-            return {"error": "Which agent should be more aggressive?"}
-        return {"action": "nudge_aggression", "name": target, "direction": "more"}
+            return {"error": "Which bot should be more aggressive?"}
+        return {"action": "set_threshold", "name": target, "direction": "more"}
     if re.search(r"\b(less aggressive|more passive|too aggressive|pickier)\b", lowered):
         if not target:
-            return {"error": "Which agent should be less aggressive?"}
-        return {"action": "nudge_aggression", "name": target, "direction": "less"}
+            return {"error": "Which bot should be less aggressive?"}
+        return {"action": "set_threshold", "name": target, "direction": "less"}
 
-    if re.search(rf"\b(add|give|fund)\b.*{MONEY_RE}", lowered) or re.search(
+    if re.search(rf"\b(add|give)\b.*{MONEY_RE}", lowered) or re.search(
             rf"{MONEY_RE}\s+(more|extra)", lowered):
         if not target:
-            return {"error": "Which agent should get the paper cash?"}
+            return {"error": "Which bot should get the paper cash?"}
         return {"action": "add_cash", "name": target, "dollars": _money(lowered) or 20.0}
 
     if re.search(r"\b(pause|stop)\b", lowered) and target:
-        return {"action": "deploy_agent", "name": target, "deployed": False}
+        return {"action": "pause_bot", "name": target}
     if re.search(r"\b(deploy|run|start|resume)\b", lowered) and target:
-        return {"action": "deploy_agent", "name": target, "deployed": True}
+        return {"action": "deploy_bot", "name": target}
 
-    if target and go:
-        return {"action": "inspect_agent", "name": target}
+    if target and re.search(r"\b(edge|leftover|cash|balance|status|doing|own)\b", lowered):
+        return {"action": "inspect_bot", "name": target}
 
-    return {"error": HELP}
+    return {"error": HELP, "help": HELP}

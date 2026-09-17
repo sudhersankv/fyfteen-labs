@@ -1,6 +1,6 @@
 [project]
 name = "fyfteen-labs"
-version = "0.3.0"
+version = "0.4.0"
 description = "fyfteen labs: paper sandbox for Kalshi 15-minute Bitcoin markets"
 requires-python = ">=3.11"
 dependencies = [
@@ -11,6 +11,8 @@ dependencies = [
   "cryptography>=43",
   "pydantic-settings>=2.6",
   "aiosqlite>=0.20",
+  "itsdangerous>=2.2",
+  "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]

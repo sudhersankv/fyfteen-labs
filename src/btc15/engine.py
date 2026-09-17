@@ -8,9 +8,9 @@ import time
 from dataclasses import dataclass, field
 from typing import Any
 
-from .catalog import (AGENT_KINDS, KNOBS, NOT_OPPORTUNITIES, OPPORTUNITY_BUCKETS,
-                    OPPORTUNITY_DEFINITION, OPPORTUNITY_FORMULA, SHARED_TRIGGERS,
-                    classify_opportunities, kind_guide)
+from .catalog import (AGENT_KINDS, EDGE_FORMULA, KNOBS, LEGACY_KINDS, NOT_OPPORTUNITIES,
+                    OPPORTUNITY_BUCKETS, OPPORTUNITY_DEFINITION, REASON_LABELS,
+                    SHARED_TRIGGERS, classify_opportunities, kind_guide, leftover_edge)
 from .config import Settings
 from .domain import (Market,OrderBook,PriceHistory,f,fair_probability,iso_ts,taker_fee,
                      taker_fee_for_legs)
@@ -77,16 +77,11 @@ class Engine:
         self.health = {"kalshi": {"status": "starting", "last_event_ts": 0, "reconnects": 0, "error": ""},
                        "recorder": {"status": "ok", "last_event_ts": time.time(), "reconnects": 0, "error": ""}}
         self.agent_kinds = {
-            "settlement":.030,
-            "trend-rider":.035,
-            "hybrid":.030,
+            "fair-value": .030,
+            "momentum": .025,
+            "late-settlement": .025,
         }
-        self.legacy_kinds = {
-            "fair-value":"settlement","trend":"trend-rider","breakout":"trend-rider",
-            "order-flow":"hybrid","microstructure":"hybrid",
-            "confirmation":"hybrid","regime-confirmation":"hybrid",
-            "consensus":"hybrid","ensemble-consensus":"hybrid",
-        }
+        self.legacy_kinds = LEGACY_KINDS
         self.experiments: dict[str,Experiment] = {}
         self.manual=Experiment("manual-paper","manual",.04,s.bankroll,
                                allocated_capital=s.bankroll,deployed=True,
@@ -138,7 +133,7 @@ class Engine:
         await self.fit_calibrator()
         await self.restore_agents()
         await self.restore_accounts()
-        await self.spread_identical_jobs()
+        await self.open_job_windows()
         await self.discover()
         self.tasks = [
             asyncio.create_task(self.client.stream(self.active_tickers, self.on_event, self.on_health)),
@@ -178,6 +173,20 @@ class Engine:
                 row["experiment"],kind,row["threshold"],row["allocated_capital"],
                 allocated_capital=row["allocated_capital"],deployed=bool(row["deployed"]),
                 policy=normalize_policy(saved_policies.get(row["experiment"]),self.s))
+        if not self.experiments:
+            await self.seed_preset_fleet()
+
+    async def seed_preset_fleet(self) -> None:
+        budget = float(self.s.bankroll)
+        templates = {item["id"]: item for item in bot_templates(self.s)}
+        for name, template_id in (
+            ("fair-value", "fair-value"),
+            ("momentum", "momentum"),
+            ("late-settlement", "late-settlement"),
+        ):
+            template = templates[template_id]
+            await self.create_agent(
+                name, template["kind"], budget, template["threshold"], True, template["policy"])
 
     async def persist_deployment(self,exp: Experiment) -> None:
         now=self.clock()
@@ -198,6 +207,7 @@ class Engine:
         name=name.strip().lower()
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,31}",name):
             raise ValueError("Agent name must be 2-32 lowercase letters, numbers, or hyphens")
+        kind = self.legacy_kinds.get(kind, kind)
         if kind not in self.agent_kinds:
             raise ValueError(f"Unknown specialist kind: {kind}")
         if not 1<=budget<=10_000:
@@ -209,8 +219,14 @@ class Engine:
             raise ValueError("Agent name already exists")
         if await self.store.one("SELECT experiment FROM accounts WHERE experiment=?",(name,)):
             raise ValueError("Agent name has historical account data; choose another name")
+        preset = policy_presets(self.s).get(kind, {})
+        overlay = {key: preset[key] for key in (
+            "entry_start_seconds", "entry_stop_seconds", "max_order_dollars",
+            "cooldown_seconds", "max_entries_per_market") if key in preset}
+        if policy:
+            overlay.update(policy)
         exp=Experiment(name,kind,threshold,budget,allocated_capital=budget,deployed=deployed,
-                       policy=normalize_policy(policy,self.s))
+                       policy=normalize_policy(overlay or None,self.s))
         self.experiments[name]=exp
         await self.persist_deployment(exp)
         await self.persist_account(exp)
@@ -285,12 +301,14 @@ class Engine:
         exp = self.experiments.get(name)
         if not exp:
             raise ValueError("Unknown active agent")
+        kind = self.legacy_kinds.get(kind, kind) if kind else None
+        template_id = self.legacy_kinds.get(template_id, template_id) if template_id else None
         templates = {item["id"]: item for item in bot_templates(self.s)}
         template = templates.get(template_id) if template_id else None
         if template is None and kind:
             template = next((item for item in templates.values() if item["kind"] == kind), None)
         if template is None and policy is None and kind is None:
-            raise ValueError("Choose a job: Direction, Both agree, or Late closer")
+            raise ValueError("Choose a template: Fair Value, Momentum, or Late Settlement")
         if template:
             exp.kind = template["kind"]
             exp.threshold = template["threshold"]
@@ -311,15 +329,15 @@ class Engine:
                 "policy": exp.policy,
                 "reply": f"{display_name(name)} now works the {title} job."}
 
-    async def spread_identical_jobs(self) -> None:
-        agents = list(self.experiments.values())
-        if len(agents) < 2 or any(exp.kind != "settlement" for exp in agents):
-            return
-        order = ["trend-rider", "hybrid", "settlement"]
-        for index, exp in enumerate(agents):
-            kind = order[index % 3]
-            if exp.kind != kind:
-                await self.assign_job(exp.name, kind=kind)
+    def job_window(self, kind: str) -> float:
+        return float(AGENT_KINDS.get(kind, {}).get("entry_window_seconds", 840))
+
+    async def open_job_windows(self) -> None:
+        for exp in self.experiments.values():
+            window = self.job_window(exp.kind)
+            if exp.policy.get("entry_start_seconds") != window:
+                exp.policy["entry_start_seconds"] = window
+                await self.persist_deployment(exp)
 
     async def flatten_agent(self, exp: Experiment) -> float:
         rows = await self.store.rows(
@@ -560,7 +578,10 @@ class Engine:
             self.update_crossings(value, source_ts)
             if received - self.last_eval >= 0.9:
                 self.last_eval = received
-                await self.evaluate(received)
+                try:
+                    await self.evaluate(received)
+                except Exception as exc:
+                    self.health["recorder"].update(error=f"evaluate: {exc}")
 
     def update_crossings(self, value: float, ts: float) -> None:
         m = self.markets.get(self.current or "")
@@ -584,7 +605,7 @@ class Engine:
         momentum_30s=signal_history.ret(30,market_clock)
         momentum_60s=signal_history.ret(60,market_clock)
         flow=self.flows.setdefault(self.current,MicrostructureState(self.s.flow_half_life_seconds))
-        recent_times=[ts for ts,_ in signal_history.values if ts>=market_clock-60]
+        recent_times=[ts for ts,_ in signal_history.values if ts>=market_clock-900]
         history_seconds=(max(recent_times)-min(recent_times)) if len(recent_times)>1 else 0
         model=estimate_probability(
             spot=self.brti,target=m.target,seconds_left=left,volatility=vol,
@@ -666,178 +687,177 @@ class Engine:
                                      (exp.name, now, exp.cash, exp.cash + liquidation, exp.realized))
 
     async def decide(self, exp: Experiment, m: Market, book: OrderBook, x: dict, now: float, stale: bool) -> None:
-        p_yes = self.agent_probability(exp,x)
-        choices = []
-        for side, probability, price in (("yes", p_yes, book.yes_ask), ("no", 1-p_yes, book.no_ask)):
-            if price is not None:
-                fee_pc = self.execution_fee(price,1,"buy")
-                choices.append((probability - price - fee_pc - self.s.safety_margin, side, price))
-        if not choices:
-            exp.reason = "No executable two-sided book"
+        if await self.maybe_exit(exp, m, book, x, now, stale):
             return
-        edge, side, price = max(choices)
-        recent = [row for row in exp.memory if row.get("market_ticker")==m.ticker][-6:]
-        combined_flow=.4*x["weighted_imbalance"]+.35*x["book_flow"]+.25*x["trade_flow"]
-        flow_signal = 1 if combined_flow > .10 else (-1 if combined_flow < -.10 else 0)
-        side_sign = 1 if side == "yes" else -1
-        persistence = ((sum(row["preferred_side"] == side for row in recent)+1)/
-                       (len(recent)+1))
-        confidence=self.agent_confidence(exp,x)
-        model_uncertainty=x["uncertainty"]
-        if exp.kind=="settlement":
-            model_uncertainty=min(model_uncertainty,(1-confidence)*.15+.01)
-        elif exp.kind=="trend-rider":
-            model_uncertainty=min(model_uncertainty,(1-confidence)*.15+
-                                  abs(x["p_trend"]-x["p_terminal"])*.20)
-        leftover=edge-min(.04,exp.policy["uncertainty_penalty"]*model_uncertainty)
-        waiting=None
-        adverse_flow=flow_signal and flow_signal != side_sign and abs(combined_flow)>.45
-        unstable = len(recent) >= 3 and persistence < .67
-        if exp.kind=="settlement" and (x["seconds_left"]>180 or unstable):
-            waiting=(f"Late closer job is closed until the last 3 minutes. "
-                     f"{x['seconds_left']:.0f}s left.")
-        elif exp.kind=="trend-rider" and (
-                x["seconds_left"]>360 or x["horizon_agreement"]<.66
-                or x["trend_strength"]*side_sign<=.20 or x["regime"] in ("jump","chop")
-                or adverse_flow):
-            waiting=(f"Direction job is waiting for a confirmed move in the last 6 minutes. "
-                     f"agreement={x['horizon_agreement']:.0%}, regime={x['regime']}.")
-        elif exp.kind=="hybrid":
-            settlement_side=1 if x["p_settlement"]>=.5 else -1
-            trend_side=1 if x["p_trend"]>=.5 else -1
-            if (x["seconds_left"]>240 or settlement_side!=side_sign or trend_side!=side_sign
-                    or unstable or adverse_flow):
-                waiting=(f"Both-agree job needs the late-average and direction calls on the same side "
-                         f"in the last 4 minutes.")
-        elif exp.kind not in self.agent_kinds:
-            waiting=f"Unknown bot type {exp.kind}"
-        exp.memory.append({"ts":now,"market_ticker":m.ticker,"preferred_side":side,
-            "raw_edge":edge,"adjusted_edge":leftover,"p_yes":p_yes,
-            "momentum_5s":x["momentum_5s"],"imbalance":x["imbalance"],
-            "flow":combined_flow,"regime":x["regime"],"confidence":confidence,
-            "p_settlement":x["p_settlement"],"p_trend":x["p_trend"]})
+        code, reason = self.wait_reason(exp, m, book, x, stale)
+        p_yes = self.agent_probability(exp, x) if not code else None
+        side = price = leftover = None
+        if p_yes is not None:
+            choices = []
+            for candidate, probability, quote in (("yes", p_yes, book.yes_ask), ("no", 1 - p_yes, book.no_ask)):
+                if quote is None:
+                    continue
+                fee_pc = self.execution_fee(quote, 1, "buy")
+                edge = leftover_edge(probability, quote, fee_pc, self.s.safety_margin, 0)
+                if edge is None:
+                    continue
+                choices.append((edge, candidate, quote, probability))
+            if not choices:
+                code, reason = "no-quote", REASON_LABELS["no-quote"]
+            else:
+                leftover, side, price, probability = max(choices)
+                if not code:
+                    code, reason = self.entry_reason(exp, m, book, x, now, stale, side, leftover, probability, price)
+        action = "WAIT" if code and code != "below-edge" else ("HOLD" if code else f"BUY_{side.upper()}")
+        if action.startswith("BUY"):
+            exp.suggested_size = self.paper_size(exp, leftover or 0)
+            if exp.suggested_size <= 0:
+                action, code, reason = "HOLD", "cash", REASON_LABELS["cash"]
+            else:
+                reason = (
+                    f"BUY {side.upper()}. Model probability {probability:.0%}. "
+                    f"{side.upper()} ask {int(round(price*100))}¢. "
+                    f"Estimated edge after fees {leftover:.1%} (need {exp.threshold:.1%})."
+                )
+                code = "buy"
+        exp.lifecycle_state = "ENTERING" if action.startswith("BUY") else (
+            exp.lifecycle_state if str(exp.lifecycle_state).startswith("HOLDING") else "SCANNING")
+        exp.current_action, exp.reason = action, reason
+        exp.waiting_for = "" if action.startswith("BUY") else reason
+        exp.memory.append({"ts": now, "market_ticker": m.ticker, "preferred_side": side,
+                           "p_yes": p_yes, "net_edge": leftover})
         exp.memory = exp.memory[-120:]
-        if now-exp.last_state_persist >= 15:
+        if now - exp.last_state_persist >= 15:
             await self.persist_agent_state(exp)
-        if await self.maybe_exit(exp,m,book,x,p_yes,side,leftover,now,stale):
-            return
-        exp.suggested_size=0 if waiting else self.smart_size(
-            exp.cash,p_yes if side=="yes" else 1-p_yes,price,confidence,leftover,exp.policy)
-        reason=waiting or (f"leftover={leftover:.3f}; raw={edge:.3f}; pYES={p_yes:.3f}; "
-                           f"confidence={confidence:.0%}; uncertainty={model_uncertainty:.3f}; "
-                           f"regime={x['regime']}; persistence={persistence:.0%}")
-        blocked = ("" if waiting else self.risk_reason(
-            exp,m,book,{**x,"confidence":confidence},now,stale,side,leftover))
-        action = (f"BUY_{side.upper()}"
-                  if not waiting and not blocked and leftover >= exp.threshold else "HOLD")
-        exp.lifecycle_state="ENTERING" if action.startswith("BUY") else (
-            exp.lifecycle_state if exp.lifecycle_state.startswith("HOLDING") else "SCANNING")
-        exp.current_action, exp.reason = action, blocked or reason
-        exp.waiting_for = waiting or blocked or ""
-        await self.store.execute("""INSERT INTO decisions(experiment,market_ticker,ts,action,side,p_yes,
-            executable_price,raw_edge,net_edge,reason) VALUES(?,?,?,?,?,?,?,?,?,?)""",
-            (exp.name,m.ticker,now,action,side,p_yes,price,edge+self.s.safety_margin,leftover,exp.reason))
-        if action != "HOLD" and (exp.name, m.ticker) not in self.pending:
+        await self.record_decision(exp, m, now, action, side, p_yes, price, leftover, leftover, reason, code)
+        if action.startswith("BUY") and (exp.name, m.ticker) not in self.pending:
             self.schedule_execution(exp, m, "buy", side, now, dollars=exp.suggested_size)
 
-    def agent_probability(self,exp: Experiment,x: dict) -> float:
-        base=float(x["p_yes"])
-        market=x.get("p_market")
-        prior=base if market is None else market
-        if exp.kind=="settlement":
-            return clamp(.90*x["p_settlement"]+.10*prior)
-        if exp.kind=="trend-rider":
-            return clamp(.80*x["p_trend"]+.20*prior)
-        if exp.kind=="hybrid":
-            return clamp(.55*x["p_settlement"]+.35*x["p_trend"]+.10*prior)
-        return clamp(base)
+    def wait_reason(self, exp: Experiment, m: Market, book: OrderBook, x: dict, stale: bool) -> tuple[str, str]:
+        if not exp.deployed:
+            return "paused", REASON_LABELS["paused"]
+        if stale or not book.valid:
+            return "stale", REASON_LABELS["stale"]
+        if m.target < self.s.min_valid_btc_target:
+            return "invalid-target", REASON_LABELS["invalid-target"]
+        if not self.fees_verified:
+            return "fees", REASON_LABELS["fees"]
+        if book.yes_ask is None and book.no_ask is None:
+            return "no-quote", REASON_LABELS["no-quote"]
+        return "", ""
 
-    def agent_confidence(self,exp: Experiment,x: dict) -> float:
-        history=float(x.get("history_confidence",x.get("confidence",0)))
-        shared=float(x.get("confidence",0))
-        if exp.kind=="settlement":
-            observed=min(1,float(x.get("observation_count",0))/60)
-            return min(.95,max(shared,history*(.50+.45*observed)))
-        if exp.kind=="trend-rider":
-            return min(.95,history*max(.25,float(x.get("horizon_agreement",0))))
-        return min(.95,max(shared,history*(1-min(.7,float(x.get("disagreement",0))))))
+    def entry_reason(self, exp: Experiment, m: Market, book: OrderBook, x: dict, now: float,
+                     stale: bool, side: str, leftover: float, probability: float,
+                     price: float) -> tuple[str, str]:
+        window = min(exp.policy.get("entry_start_seconds", self.job_window(exp.kind)),
+                     self.job_window(exp.kind))
+        if x["seconds_left"] > window:
+            title = kind_guide(exp.kind)["title"]
+            return "window", (
+                f"{title} waits until {window/60:.0f} minutes remain. "
+                f"{x['seconds_left']/60:.1f} minutes are left.")
+        if x["seconds_left"] < exp.policy["entry_stop_seconds"]:
+            return "window", "Too close to settlement for a new buy."
+        policy = exp.policy
+        if x.get("spread") is None or x["spread"] > policy["max_spread"]:
+            return "spread", REASON_LABELS["spread"]
+        if book.depth("ask" if side == "yes" else "bid") < policy["min_liquidity"]:
+            return "liquidity", REASON_LABELS["liquidity"]
+        if now - exp.last_trade.get(m.ticker, 0) < policy["cooldown_seconds"]:
+            return "cooldown", REASON_LABELS["cooldown"]
+        if exp.trades_by_market.get(m.ticker, 0) >= policy["max_entries_per_market"]:
+            return "entries", REASON_LABELS["entries"]
+        if exp.exposure_by_market.get(m.ticker, 0) >= policy["max_market_exposure"]:
+            return "exposure", REASON_LABELS["exposure"]
+        if sum(exp.exposure_by_market.values()) >= policy["max_total_exposure"]:
+            return "exposure", REASON_LABELS["exposure"]
+        if leftover < exp.threshold:
+            return "below-edge", (
+                f"Estimated edge {leftover:.1%} is below the required {exp.threshold:.1%}. "
+                f"Model probability {probability:.0%}. {side.upper()} ask {int(round(price*100))}¢.")
+        return "", ""
+
+    def paper_size(self, exp: Experiment, leftover: float) -> float:
+        if leftover <= 0:
+            return 0.0
+        policy = exp.policy or policy_defaults(self.s)
+        market_room = policy["max_market_exposure"] - sum(exp.exposure_by_market.values())
+        total_room = policy["max_total_exposure"] - sum(exp.exposure_by_market.values())
+        target = min(exp.cash * policy["capital_fraction"], policy["max_order_dollars"],
+                     market_room, total_room, exp.cash)
+        return round(max(0.0, target), 2)
+
+    async def record_decision(self, exp: Experiment, m: Market, now: float, action: str,
+                              side: str | None, p_yes: float | None, price: float | None,
+                              raw_edge: float | None, leftover: float | None,
+                              reason: str, code: str) -> None:
+        await self.store.execute("""INSERT INTO decisions(experiment,market_ticker,ts,action,side,p_yes,
+            executable_price,raw_edge,net_edge,reason,reason_code) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+            (exp.name, m.ticker, now, action, side, p_yes, price, raw_edge, leftover, reason, code))
+
+    def agent_probability(self, exp: Experiment, x: dict) -> float:
+        terminal = float(x.get("p_terminal") or x.get("p_yes") or .5)
+        settlement = float(x.get("p_settlement") or terminal)
+        trend = float(x.get("p_trend") or terminal)
+        if exp.kind == "late-settlement":
+            return clamp(settlement)
+        if exp.kind == "momentum":
+            return clamp(.55 * trend + .45 * terminal)
+        return clamp(terminal)
 
     def compound_size(self, working_cash: float) -> float:
-        target = working_cash*self.s.capital_fraction_per_trade
-        target = max(self.s.min_dollars_per_trade,target)
-        return round(max(0.0,min(working_cash,self.s.dollars_per_trade,target)),2)
+        target = working_cash * self.s.capital_fraction_per_trade
+        target = max(self.s.min_dollars_per_trade, target)
+        return round(max(0.0, min(working_cash, self.s.dollars_per_trade, target)), 2)
 
-    def smart_size(self,working_cash: float,probability: float,price: float,
-                   confidence: float,robust_edge: float,
-                   policy: dict[str,float] | None = None) -> float:
-        if robust_edge <= 0 or price >= 1:
-            return 0.0
-        policy=policy or policy_defaults(self.s)
-        kelly=max(0.0,(probability-price)/(1-price))
-        fraction=min(policy["capital_fraction"],policy["fractional_kelly"]*kelly)*confidence
-        target=working_cash*fraction
-        if target <= 0:
-            return 0.0
-        return round(min(working_cash,policy["max_order_dollars"],
-                         max(self.s.min_dollars_per_trade,target)),2)
+    def smart_size(self, working_cash: float, probability: float, price: float,
+                   confidence: float, robust_edge: float,
+                   policy: dict[str, float] | None = None) -> float:
+        exp = Experiment("tmp", "fair-value", .03, working_cash,
+                         allocated_capital=working_cash, policy=policy or policy_defaults(self.s))
+        return self.paper_size(exp, robust_edge)
 
     def execution_fee(self, price: float, contracts: float, action: str) -> float:
-        return taker_fee(price,contracts,self.s.fee_base_rate,self.s.fee_multiplier,
-                         action,self.s.balance_precision)
+        return taker_fee(price, contracts, self.s.fee_base_rate, self.s.fee_multiplier,
+                         action, self.s.balance_precision)
 
-    def execution_fee_for_legs(self,legs: list[tuple[float,float]],action: str) -> float:
-        return taker_fee_for_legs(legs,self.s.fee_base_rate,self.s.fee_multiplier,
-                                  action,self.s.balance_precision)
+    def execution_fee_for_legs(self, legs: list[tuple[float, float]], action: str) -> float:
+        return taker_fee_for_legs(legs, self.s.fee_base_rate, self.s.fee_multiplier,
+                                  action, self.s.balance_precision)
 
     async def maybe_exit(self, exp: Experiment, m: Market, book: OrderBook, x: dict,
-                         agent_p_yes: float,preferred_side: str,preferred_edge: float,
-                         now: float,stale: bool) -> bool:
+                         now: float, stale: bool) -> bool:
         positions = await self.store.rows(
             "SELECT * FROM positions WHERE experiment=? AND market_ticker=? AND result IS NULL",
             (exp.name, m.ticker))
         if not positions or stale or not book.valid or (exp.name, m.ticker) in self.pending:
             return False
-        recent=[row for row in exp.memory if row.get("market_ticker")==m.ticker][-6:]
+        p_yes = self.agent_probability(exp, x)
         for pos in positions:
             side = pos["side"]
-            probability = agent_p_yes if side=="yes" else 1-agent_p_yes
+            probability = p_yes if side == "yes" else 1 - p_yes
             bid = book.yes_bid if side == "yes" else book.no_bid
             if bid is None:
                 continue
-            total_exit_fee=self.execution_fee(bid,pos["contracts"],"sell")
-            fee_pc=total_exit_fee/max(pos["contracts"],1e-9)
+            fee_pc = self.execution_fee(bid, pos["contracts"], "sell") / max(pos["contracts"], 1e-9)
             market_over_fair = bid - fee_pc - probability
-            side_sign=1 if side=="yes" else -1
-            flow=.4*x["weighted_imbalance"]+.35*x["book_flow"]+.25*x["trade_flow"]
-            adverse_flow=flow*side_sign<-.45
-            opposite_persistence=(sum(row.get("preferred_side")!=side for row in recent)/
-                                  max(1,len(recent)))
-            break_even=(pos["cost"]+pos["fees"])/max(pos["contracts"],1e-9)
-            liquid_value=bid-fee_pc
-            open_profit=liquid_value-break_even
-            locked_winner=probability>=.80 and x["seconds_left"]<=120
-            exit_margin=exp.policy["exit_edge"]
-            value_exit=market_over_fair>=exit_margin
-            thesis_broken=(not locked_winner and probability<=.25 and len(recent)>=3
-                           and opposite_persistence>=.80)
-            protect_profit=(not locked_winner and open_profit>=.04
-                            and probability<.58 and adverse_flow)
-            if value_exit or thesis_broken or protect_profit:
-                reason=("EXIT_VALUE_OF_SELLING" if value_exit else
-                        ("EXIT_THESIS_BROKEN" if thesis_broken else "REDUCE_PROTECT_PROFIT"))
-                contracts=pos["contracts"]*.5 if protect_profit else pos["contracts"]
+            break_even = (pos["cost"] + pos["fees"]) / max(pos["contracts"], 1e-9)
+            if market_over_fair >= exp.policy.get("exit_edge", .02) or probability <= .25:
+                reason = (
+                    f"SELL {side.upper()}. Bid {int(round(bid*100))}¢ versus hold value "
+                    f"{int(round(probability*100))}¢."
+                    if market_over_fair >= exp.policy.get("exit_edge", .02)
+                    else f"SELL {side.upper()}. Model reversed to {probability:.0%}.")
                 exp.current_action = f"SELL_{side.upper()}"
-                exp.lifecycle_state="REDUCING" if protect_profit else "EXITING"
-                exp.reason=(f"{reason}; bid={bid:.3f}; fair={probability:.3f}; "
-                            f"break-even={break_even:.3f}; open={open_profit:+.3f}/contract")
-                await self.store.execute("""INSERT INTO decisions(experiment,market_ticker,ts,action,side,p_yes,
-                    executable_price,raw_edge,net_edge,reason) VALUES(?,?,?,?,?,?,?,?,?,?)""",
-                    (exp.name,m.ticker,now,exp.current_action,side,agent_p_yes,bid,
-                     market_over_fair,market_over_fair,exp.reason))
-                self.schedule_execution(exp, m, "sell", side, now, contracts=contracts)
+                exp.lifecycle_state = "EXITING"
+                exp.reason = reason
+                await self.record_decision(exp, m, now, exp.current_action, side, p_yes, bid,
+                                           market_over_fair, market_over_fair, reason, "sell")
+                self.schedule_execution(exp, m, "sell", side, now, contracts=pos["contracts"])
                 return True
-            exp.lifecycle_state=("HOLDING_STRONG" if locked_winner else
-                                 ("HOLDING_PROFIT" if open_profit>0 else "HOLDING_THESIS"))
+            exp.lifecycle_state = "HOLDING"
+            exp.current_action = "HOLD"
+            exp.reason = f"Holding {side.upper()} {pos['contracts']:.2f}. Model {probability:.0%}."
         return False
 
     def schedule_execution(self, exp: Experiment, m: Market, action: str, side: str,
@@ -851,32 +871,15 @@ class Engine:
 
     def risk_reason(self, exp: Experiment, m: Market, book: OrderBook, x: dict, now: float,
                     stale: bool, side: str, edge: float) -> str:
-        if stale or not book.valid: return "BLOCKED: stale or unsynchronized feed"
-        if m.target < self.s.min_valid_btc_target: return "BLOCKED: invalid BTC target"
-        if not self.fees_verified: return "BLOCKED: production fees not verified"
-        policy=exp.policy or policy_defaults(self.s)
-        if exp.name != self.manual.name and x.get("confidence",0)<policy["min_confidence"]:
-            return (f"BLOCKED: confidence {x.get('confidence',0):.1%} below "
-                    f"{policy['min_confidence']:.1%}")
-        if self.fee_type not in ("quadratic", "quadratic_with_maker_fees", "quadratic_with_combo_maker_fees"):
-            return f"BLOCKED: unsupported fee model {self.fee_type}"
-        strategy_window={"settlement":180.0,"trend-rider":360.0,"hybrid":240.0}.get(
-            exp.kind,policy["entry_start_seconds"])
-        effective_start=min(policy["entry_start_seconds"],strategy_window)
-        if x["seconds_left"] > effective_start:
-            return f"BLOCKED: {exp.kind} window opens at {effective_start:.0f}s"
-        if x["seconds_left"] < policy["entry_stop_seconds"]: return "BLOCKED: entry window closed"
-        if x["spread"] is None or x["spread"] > policy["max_spread"]: return "BLOCKED: spread"
-        if book.depth("ask" if side == "yes" else "bid") < policy["min_liquidity"]: return "BLOCKED: liquidity"
-        if now - exp.last_trade.get(m.ticker, 0) < policy["cooldown_seconds"]: return "BLOCKED: cooldown"
-        strategy_entry_cap={"settlement":2,"trend-rider":3,"hybrid":3}.get(
-            exp.kind,policy["max_entries_per_market"])
-        effective_entries=min(policy["max_entries_per_market"],strategy_entry_cap)
-        if exp.trades_by_market.get(m.ticker, 0) >= effective_entries:
-            return f"BLOCKED: trade count ({effective_entries} {exp.kind} entries max)"
-        if exp.exposure_by_market.get(m.ticker, 0) >= policy["max_market_exposure"]: return "BLOCKED: market exposure"
-        if sum(exp.exposure_by_market.values()) >= policy["max_total_exposure"]: return "BLOCKED: total exposure"
-        return ""
+        code, reason = self.wait_reason(exp, m, book, x, stale)
+        if code:
+            return reason
+        p_yes = self.agent_probability(exp, {"p_terminal": .5, "p_yes": .5,
+                                             "p_settlement": .5, "p_trend": .5, **x})
+        price = book.yes_ask if side == "yes" else book.no_ask
+        leftover = edge
+        code, reason = self.entry_reason(exp, m, book, x, now, stale, side, leftover, p_yes, price or 0)
+        return reason
 
     def manual_risk_reason(self,m: Market,book: OrderBook,x: dict,
                            stale: bool,side: str) -> str:
@@ -1040,8 +1043,9 @@ class Engine:
         if stale or not book.valid:
             raise ValueError("Paper order blocked: stale or unsynchronized market data")
         if action == "buy":
-            amount = min(max(amount,self.s.min_dollars_per_trade),self.s.dollars_per_trade)
-            if amount>self.manual.cash:
+            if amount < self.s.min_dollars_per_trade:
+                raise ValueError(f"Minimum paper buy is ${self.s.min_dollars_per_trade:.2f}")
+            if amount > self.manual.cash:
                 raise ValueError(f"Only ${self.manual.cash:.2f} manual paper cash is available")
             blocked=self.manual_risk_reason(m,book,x,stale,side)
             if blocked:
@@ -1064,22 +1068,26 @@ class Engine:
                 "message":"Queued against the post-latency observable book"}
 
     def catalog(self) -> dict[str, Any]:
-        return {"kinds":[kind_guide(kind) for kind in AGENT_KINDS],
-                "knobs":KNOBS,"policy_fields":POLICY_FIELDS,
-                "presets":policy_presets(self.s),"templates":bot_templates(self.s),
-                "opportunity_definition":OPPORTUNITY_DEFINITION,
-                "opportunity_formula":OPPORTUNITY_FORMULA,
-                "not_opportunities":NOT_OPPORTUNITIES,
-                "opportunity_buckets":OPPORTUNITY_BUCKETS,
-                "triggers":SHARED_TRIGGERS,
-                "compiler_contract":{
-                    "version":2,
-                    "controller":"FYFTEN",
-                    "purpose":"FYFTEN is the voice fleet manager. It compiles speech onto these same agent APIs. Bots stay deterministic.",
-                    "required":["template_id","name","budget","deployed"],
-                    "optional":["threshold","policy"],
-                    "allowed_kinds":list(self.agent_kinds),
-                    "rule":"Unknown fields are rejected or ignored by policy normalization; no executable code.",
+        beginner = [f for f in POLICY_FIELDS if f.get("beginner")]
+        advanced = [f for f in POLICY_FIELDS if not f.get("beginner")]
+        return {"kinds": [kind_guide(kind) for kind in AGENT_KINDS],
+                "knobs": KNOBS, "policy_fields": POLICY_FIELDS,
+                "beginner_fields": beginner, "advanced_fields": advanced,
+                "presets": policy_presets(self.s), "templates": bot_templates(self.s),
+                "edge_formula": EDGE_FORMULA,
+                "opportunity_definition": OPPORTUNITY_DEFINITION,
+                "opportunity_formula": EDGE_FORMULA,
+                "not_opportunities": NOT_OPPORTUNITIES,
+                "opportunity_buckets": OPPORTUNITY_BUCKETS,
+                "triggers": SHARED_TRIGGERS,
+                "compiler_contract": {
+                    "version": 3,
+                    "controller": "FYFTEN",
+                    "purpose": "FYFTEN is a text chatbot that maps chat onto validated bot tools. Bots stay deterministic.",
+                    "required": ["template_id", "name", "budget"],
+                    "optional": ["threshold", "policy", "deployed"],
+                    "allowed_kinds": list(self.agent_kinds),
+                    "rule": "Unknown fields are rejected or ignored by policy normalization; no executable code.",
                 }}
 
     async def agent_dossier(self, name: str) -> dict[str, Any]:
@@ -1095,18 +1103,15 @@ class Engine:
             "SELECT ts,action,side,p_yes,executable_price,raw_edge,net_edge,reason "
             "FROM decisions WHERE experiment=? ORDER BY id DESC LIMIT 80",(name,))
         curve = await self.store.rows(
-            "SELECT ts,cash,equity,realized FROM equity WHERE experiment=? ORDER BY ts",(name,))
+            "SELECT ts,cash,equity,realized FROM equity WHERE experiment=? ORDER BY ts DESC LIMIT 480",(name,))
         stats = await self.store.one("""SELECT COUNT(*) trades,COALESCE(SUM(fee),0) fees,
             COALESCE(SUM(spread_cost),0) spread_cost FROM fills WHERE experiment=?""",(name,))
         settled = await self.store.one("""SELECT COUNT(*) settled,
             SUM(CASE WHEN pnl>0 THEN 1 ELSE 0 END) wins,
             SUM(CASE WHEN pnl<=0 THEN 1 ELSE 0 END) losses,
             COALESCE(SUM(pnl),0) net_pnl FROM closed_trades WHERE experiment=?""",(name,))
-        breakdown_rows = await self.store.rows("""SELECT c.side,c.pnl,c.close_type,x.regime,
-            x.seconds_left FROM closed_trades c
-            LEFT JOIN features x ON x.id=(SELECT id FROM features WHERE market_ticker=c.market_ticker
-              AND ts<=c.close_ts ORDER BY ts DESC LIMIT 1)
-            WHERE c.experiment=?""",(name,))
+        breakdown_rows = await self.store.rows(
+            "SELECT side,pnl,close_type FROM closed_trades WHERE experiment=?",(name,))
         def tally(key, value_fn):
             bins: dict[str, list] = {}
             for row in breakdown_rows:
@@ -1118,11 +1123,15 @@ class Engine:
         breakdowns = {
             "side": tally("side", lambda r: (r["side"] or "").upper() or None),
             "close_type": tally("close_type", lambda r: r["close_type"]),
-            "regime": tally("regime", lambda r: r["regime"] or "unknown"),
-            "time": tally("time", lambda r: None if r["seconds_left"] is None else f"{int(r['seconds_left']//60)}m"),
+            "regime": tally("regime", lambda r: None),
+            "time": tally("time", lambda r: None),
         }
+        curve = list(reversed(curve))
         step = max(1, len(curve)//240)
         sampled = curve[::step]
+        open_rows = await self.store.rows(
+            "SELECT * FROM positions WHERE experiment=? AND result IS NULL",(name,))
+        holdings, liquidation, cost, position = self.mark_holdings(open_rows)
         return {"name":name,"kind":exp.kind,"guide":kind_guide(exp.kind),"knobs":KNOBS,
                 "policy_fields":POLICY_FIELDS,"policy":exp.policy,
                 "triggers":SHARED_TRIGGERS,"cash":exp.cash,"bank":exp.bank,
@@ -1130,16 +1139,71 @@ class Engine:
                 "threshold":exp.threshold,"realized":exp.realized,"action":exp.current_action,
                 "state":exp.lifecycle_state,"reason":exp.reason,
                 "suggested_size":exp.suggested_size,
+                "position":position,"holdings":holdings,
+                "contracts":sum(row["contracts"] or 0 for row in open_rows),
+                "cost":cost,"unrealized":liquidation-cost,
                 "streak":(f"W{exp.consecutive_wins}" if exp.consecutive_wins else
                           f"L{exp.consecutive_losses}" if exp.consecutive_losses else "—"),
                 "fills":fills[::-1],"closed_trades":closed[::-1],
                 "decisions":decisions[::-1],"equity_curve":sampled,
                 "stats":{**(stats or {}),**(settled or {})},"breakdowns":breakdowns,
+                "why_not": await self.why_not_traded(name),
                 "as_of":now}
+
+    async def why_not_traded(self, name: str, seconds: float = 900) -> dict[str, Any]:
+        since = self.clock() - seconds
+        rows = await self.store.rows(
+            """SELECT COALESCE(reason_code,'') code, reason, COUNT(*) n
+               FROM decisions WHERE experiment=? AND ts>=? AND action IN ('HOLD','WAIT')
+               GROUP BY code, reason ORDER BY n DESC LIMIT 12""", (name, since))
+        counts: dict[str, int] = {}
+        for row in rows:
+            code = row["code"] or "other"
+            counts[code] = counts.get(code, 0) + row["n"]
+        labels = [{"code": code, "label": REASON_LABELS.get(code, reason), "n": n}
+                  for code, n, reason in
+                  ((row["code"] or "other", row["n"], row["reason"]) for row in rows)]
+        collapsed: dict[str, dict] = {}
+        for item in labels:
+            bucket = collapsed.setdefault(item["code"], {"code": item["code"],
+                                                         "label": item["label"], "n": 0})
+            bucket["n"] += item["n"]
+        ordered = sorted(collapsed.values(), key=lambda row: -row["n"])
+        return {"window_seconds": seconds, "counts": ordered}
+
+    def mark_holdings(self, rows: list[dict]) -> tuple[list[dict], float, float, str]:
+        holdings: list[dict] = []
+        liquidation = 0.0
+        cost_sum = 0.0
+        parts: list[str] = []
+        for pos in rows:
+            book = self.books.get(pos["market_ticker"])
+            bid = (book.yes_bid if pos["side"] == "yes" else book.no_bid) if book else None
+            contracts = pos["contracts"] or 0
+            cost = (pos["cost"] or 0) + (pos["fees"] or 0)
+            mark = None
+            if bid is not None and contracts:
+                mark = contracts*bid - self.execution_fee(bid, contracts, "sell")
+                liquidation += mark
+            cost_sum += cost
+            parts.append(f'{pos["side"].upper()} {contracts:.2f}')
+            holdings.append({
+                "market_ticker": pos["market_ticker"], "side": pos["side"],
+                "contracts": contracts, "cost": cost,
+                "avg_price": cost/contracts if contracts else None,
+                "mark": mark, "unrealized": (mark-cost) if mark is not None else None,
+            })
+        return holdings, liquidation, cost_sum, " + ".join(parts) or "FLAT"
 
     async def snapshot(self) -> dict[str, Any]:
         if not self.current or self.current not in self.markets:
-            return {"banner":"PAPER TRADING — REAL EXECUTION DISABLED","ready":False,"health":self.health}
+            return {"banner":"PAPER TRADING — REAL EXECUTION DISABLED","ready":False,
+                    "health":self.health, "catalog": self.catalog(),
+                    "agent_kinds":[{"kind":kind,"default_threshold":threshold,
+                                    "title":kind_guide(kind)["title"],
+                                    "summary":kind_guide(kind)["summary"]}
+                                   for kind,threshold in self.agent_kinds.items()],
+                    "strategies":[], "manual":{"cash":self.manual.cash,"position":"FLAT"}}
         m,book,now=self.markets[self.current],self.books[self.current],self.clock()
         x = self.features(now) if self.brti else {
             "brti": None, "target": m.target, "seconds_left": max(0, m.close_ts-now),
@@ -1159,7 +1223,7 @@ class Engine:
         }
         fills = await self.store.rows("SELECT * FROM fills WHERE market_ticker=? ORDER BY fill_ts", (m.ticker,))
         position_rows = await self.store.rows(
-            "SELECT * FROM positions WHERE market_ticker=? AND result IS NULL", (m.ticker,))
+            "SELECT * FROM positions WHERE result IS NULL")
         positions: dict[str, list[dict]] = {}
         for row in position_rows:
             positions.setdefault(row["experiment"], []).append(row)
@@ -1170,17 +1234,8 @@ class Engine:
         strategies = []
         aggregate_equity = 0.0
         for exp in self.experiments.values():
-            rows = positions.get(exp.name, [])
-            contracts, cost, liquidation = 0.0, 0.0, 0.0
-            side_parts = []
-            for pos in rows:
-                contracts += pos["contracts"]
-                cost += pos["cost"]+pos["fees"]
-                bid = book.yes_bid if pos["side"] == "yes" else book.no_bid
-                if bid is not None:
-                    liquidation += pos["contracts"]*bid-self.execution_fee(
-                        bid,pos["contracts"],"sell")
-                side_parts.append(f'{pos["side"].upper()} {pos["contracts"]:.2f}')
+            holdings, liquidation, cost, position = self.mark_holdings(positions.get(exp.name, []))
+            contracts = sum(row["contracts"] or 0 for row in holdings)
             equity, unrealized = exp.cash + liquidation, liquidation - cost
             aggregate_equity += equity+exp.bank
             decision = latest.get(exp.name, {})
@@ -1189,7 +1244,8 @@ class Engine:
             cached_side = decision.get("side")
             cached_persistence = (sum(row.get("preferred_side")==cached_side for row in recent_memory)/
                                   len(recent_memory)) if recent_memory and cached_side else 0
-            strategies.append({"name":exp.name,"kind":exp.kind,"threshold":exp.threshold,"cash":exp.cash,
+            strategies.append({"name":exp.name,"display_name":display_name(exp.name),
+                "kind":exp.kind,"threshold":exp.threshold,"cash":exp.cash,
                 "bank":exp.bank,"total":equity+exp.bank,
                 "allocated_capital":exp.allocated_capital,"deployed":exp.deployed,
                 "policy":exp.policy,
@@ -1198,25 +1254,19 @@ class Engine:
                 "equity":equity,"unrealized":unrealized,"realized":exp.realized,
                 "action":exp.current_action,"state":exp.lifecycle_state,
                 "reason":exp.reason,"contracts":contracts,"cost":cost,
-                "position":" + ".join(side_parts) or "FLAT",
+                "position":position,"holdings":holdings,
                 "entry_price":cost/contracts if contracts else None,
                 "p_yes":decision.get("p_yes"),"net_edge":decision.get("net_edge"),
                 "waiting_for":exp.waiting_for,
+                "trades":sum(exp.trades_by_market.values()),
+                "pnl":exp.realized,
                 "suggested_size":exp.suggested_size,"cache_samples":len(exp.memory),
                 "signal_persistence":cached_persistence,
                 "market_realized":exp.market_realized.get(m.ticker,0),
                 "streak":(f"W{exp.consecutive_wins}" if exp.consecutive_wins else
                           f"L{exp.consecutive_losses}" if exp.consecutive_losses else "—")})
-        manual_rows = positions.get(self.manual.name, [])
-        manual_cost = sum(row["cost"]+row["fees"] for row in manual_rows)
-        manual_liquidation = 0.0
-        for row in manual_rows:
-            bid=book.yes_bid if row["side"]=="yes" else book.no_bid
-            if bid is not None:
-                manual_liquidation += row["contracts"]*bid-self.execution_fee(
-                    bid,row["contracts"],"sell")
-        manual_positions = " + ".join(
-            f'{row["side"].upper()} {row["contracts"]:.2f}' for row in manual_rows) or "FLAT"
+        manual_holdings, manual_liquidation, manual_cost, manual_positions = self.mark_holdings(
+            positions.get(self.manual.name, []))
         manual_equity = self.manual.cash+manual_liquidation
         suggestion = self.research_suggestion(x,book)
         opportunities = classify_opportunities(
@@ -1224,6 +1274,7 @@ class Engine:
             fresh=bool(book.valid and self.brti and x.get("data_fresh",1)),
             yes_ask=book.yes_ask,no_ask=book.no_ask,
             p_settlement=x.get("p_settlement"),p_trend=x.get("p_trend"),
+            p_terminal=x.get("p_terminal"),
             fee_yes=self.execution_fee(book.yes_ask,1,"buy") if book.yes_ask is not None else 0,
             fee_no=self.execution_fee(book.no_ask,1,"buy") if book.no_ask is not None else 0,
             safety=self.s.safety_margin,uncertainty=x.get("uncertainty") or 0)
@@ -1258,11 +1309,12 @@ class Engine:
                 "manual":{"cash":self.manual.cash,"bank":self.manual.bank,
                     "equity":manual_equity,"total":manual_equity+self.manual.bank,
                     "unrealized":manual_liquidation-manual_cost,"position":manual_positions,
+                    "holdings":manual_holdings,
                     "action":self.manual.current_action,"reason":self.manual.reason},
                 "suggestion":suggestion,
                 "opportunities":opportunities,
                 "opportunity_definition":OPPORTUNITY_DEFINITION,
-                "opportunity_formula":OPPORTUNITY_FORMULA,
+                "opportunity_formula":EDGE_FORMULA,
                 "not_opportunities":NOT_OPPORTUNITIES,
                 "model":{"calibration":self.calibrator.status()},
                 "recent_decisions":recent_decisions,"health":self.health}
