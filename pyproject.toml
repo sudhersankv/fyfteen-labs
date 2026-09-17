@@ -1,0 +1,34 @@
+[project]
+name = "fyfteen-labs"
+version = "0.3.0"
+description = "fyfteen labs: paper sandbox for Kalshi 15-minute Bitcoin markets"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "httpx>=0.27",
+  "websockets>=14",
+  "cryptography>=43",
+  "pydantic-settings>=2.6",
+  "aiosqlite>=0.20",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "pytest-asyncio>=0.24"]
+
+[project.scripts]
+kalshi-paper = "btc15.app:main"
+kalshi-replay = "btc15.replay:main"
+fyfteen = "btc15.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/btc15"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+asyncio_mode = "auto"
